@@ -1,0 +1,46 @@
+# Binaries and build output
+/bin/
+/dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go build/test artifacts
+*.prof
+vendor/
+
+# Go workspace file
+go.work
+go.work.sum
+
+# Coverage
+*.coverprofile
+coverage.txt
+coverage.html
+
+# Dependency directories
+node_modules/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

@@ -62,10 +62,9 @@ pipeline := etl.New(etl.WithBufferSize(8))
 
 orders := pipeline.From(source)
 
-// Tap preserves the stream while sending the same immutable batches to a
-// side sink. A future archive package will build stronger replay semantics on
-// top of this primitive.
-orders.Tap(rawArchive)
+// CopyTo preserves the stream while sending the same immutable batches to a
+// side sink. This is a logical copy; Arrow buffers may be shared in memory.
+orders.CopyTo(rawArchive)
 
 clean := orders.Process(cleanOrders)
 clean.To(reportingDatabase)

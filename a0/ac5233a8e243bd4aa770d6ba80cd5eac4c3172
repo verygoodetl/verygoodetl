@@ -1,0 +1,19 @@
+.gitignore
+  s_7a8a4fc8a088ed::t_703f5484a58a3f 1-46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "a0ac5233a8e243bd4aa770d6ba80cd5eac4c3172",
+  "prompts": {},
+  "sessions": {
+    "s_7a8a4fc8a088ed": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e88723fe-842c-44aa-998c-3686c01ebb37",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    }
+  }
+}

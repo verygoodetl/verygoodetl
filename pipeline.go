@@ -117,9 +117,10 @@ func (s Stream) To(sink Sink) {
 	p.connect(s.node, n)
 }
 
-// Tap attaches a sink while preserving the stream for additional processing.
-// It is useful for side outputs such as raw archival.
-func (s Stream) Tap(sink Sink) Stream {
+// CopyTo sends each batch to sink while preserving this stream for additional
+// downstream processing. It is a logical copy: Arrow buffers are retained and
+// shared rather than necessarily copied in memory.
+func (s Stream) CopyTo(sink Sink) Stream {
 	s.To(sink)
 	return s
 }

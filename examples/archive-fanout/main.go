@@ -11,10 +11,11 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
+	"gocloud.dev/blob"
 	"gocloud.dev/blob/memblob"
 
 	etl "github.com/verygoodetl/verygoodetl"
-	"github.com/verygoodetl/verygoodetl/archive"
+	"github.com/verygoodetl/verygoodetl/filesink"
 )
 
 // ordersSource emits a single fixed batch of order IDs. A real Source would
@@ -50,8 +51,11 @@ func main() {
 	orders := pipeline.From(ordersSource{})
 
 	// CopyTo preserves the stream: batches flow to the archive AND continue
-	// on to the sink below, unmodified.
-	orders.CopyTo(archive.NewSink(bucket, "orders.parquet", archive.Parquet()))
+	// on to the sink below, unmodified. WithWriterOptions{IfNotExist: true}
+	// is what makes this an archive rather than an ordinary overwrite-on-
+	// every-run file sink: writing orders.parquet a second time fails.
+	orders.CopyTo(filesink.New(bucket, "orders.parquet", filesink.Parquet(),
+		filesink.WithWriterOptions(&blob.WriterOptions{IfNotExist: true})))
 
 	rowCount := 0
 	orders.To(etl.SinkFuncs{

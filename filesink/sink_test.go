@@ -1,4 +1,4 @@
-package archive_test
+package filesink_test
 
 import (
 	"bytes"
@@ -18,7 +18,7 @@ import (
 	"gocloud.dev/blob/memblob"
 
 	etl "github.com/verygoodetl/verygoodetl"
-	"github.com/verygoodetl/verygoodetl/archive"
+	"github.com/verygoodetl/verygoodetl/filesink"
 )
 
 type batchesSource struct {
@@ -55,7 +55,7 @@ func TestSinkHappyPathParquet(t *testing.T) {
 	p.From(batchesSource{batches: []etl.Batch{
 		batch(t, schema, 1, 2, 3),
 		batch(t, schema, 4),
-	}}).To(archive.NewSink(bucket, "orders.parquet", archive.Parquet()))
+	}}).To(filesink.New(bucket, "orders.parquet", filesink.Parquet()))
 
 	if err := p.Run(context.Background()); err != nil {
 		t.Fatal(err)
@@ -82,7 +82,7 @@ func TestSinkHappyPathArrowIPC(t *testing.T) {
 	p := etl.New()
 	p.From(batchesSource{batches: []etl.Batch{
 		batch(t, schema, 1, 2, 3),
-	}}).To(archive.NewSink(bucket, "orders.arrow", archive.ArrowIPC()))
+	}}).To(filesink.New(bucket, "orders.arrow", filesink.ArrowIPC()))
 
 	if err := p.Run(context.Background()); err != nil {
 		t.Fatal(err)
@@ -107,7 +107,7 @@ func TestSinkZeroBatchesWritesNothing(t *testing.T) {
 	defer bucket.Close()
 
 	p := etl.New()
-	p.From(batchesSource{}).To(archive.NewSink(bucket, "empty.parquet", archive.Parquet()))
+	p.From(batchesSource{}).To(filesink.New(bucket, "empty.parquet", filesink.Parquet()))
 
 	if err := p.Run(context.Background()); err != nil {
 		t.Fatal(err)
@@ -128,7 +128,7 @@ func TestSinkZeroBatchesWithSchemaWritesEmptyFile(t *testing.T) {
 
 	schema := fieldSchema("value")
 	p := etl.New()
-	p.From(batchesSource{}).To(archive.NewSink(bucket, "empty.parquet", archive.Parquet(), archive.WithSchema(schema)))
+	p.From(batchesSource{}).To(filesink.New(bucket, "empty.parquet", filesink.Parquet(), filesink.WithSchema(schema)))
 
 	if err := p.Run(context.Background()); err != nil {
 		t.Fatal(err)
@@ -157,7 +157,7 @@ func TestSinkSchemaMismatchAbortsWithoutCommitting(t *testing.T) {
 	p.From(batchesSource{batches: []etl.Batch{
 		batch(t, schema1, 1),
 		batch(t, schema2, 2),
-	}}).To(archive.NewSink(bucket, "orders.parquet", archive.Parquet()))
+	}}).To(filesink.New(bucket, "orders.parquet", filesink.Parquet()))
 
 	if err := p.Run(context.Background()); err == nil {
 		t.Fatal("want error on schema mismatch")
@@ -181,7 +181,7 @@ type failingFormat struct {
 
 func (f *failingFormat) ContentType() string { return "application/octet-stream" }
 
-func (f *failingFormat) NewWriter(_ *arrow.Schema, _ io.Writer) (archive.RecordWriter, error) {
+func (f *failingFormat) NewWriter(_ *arrow.Schema, _ io.Writer) (filesink.RecordWriter, error) {
 	return &failingWriter{parent: f}, nil
 }
 
@@ -212,7 +212,7 @@ func TestSinkMidStreamFailureAbortsWithoutCommitting(t *testing.T) {
 	p.From(batchesSource{batches: []etl.Batch{
 		batch(t, schema, 1),
 		batch(t, schema, 2),
-	}}).To(archive.NewSink(bucket, "orders.bin", &failingFormat{failAt: 2}))
+	}}).To(filesink.New(bucket, "orders.bin", &failingFormat{failAt: 2}))
 
 	if err := p.Run(context.Background()); err == nil {
 		t.Fatal("want error from injected write failure")
@@ -223,7 +223,7 @@ func TestSinkMidStreamFailureAbortsWithoutCommitting(t *testing.T) {
 	}
 }
 
-func TestSinkWriterOptionsOverrideDefaults(t *testing.T) {
+func TestSinkOverwritesByDefault(t *testing.T) {
 	bucket := memblob.OpenBucket(nil)
 	defer bucket.Close()
 
@@ -231,25 +231,16 @@ func TestSinkWriterOptionsOverrideDefaults(t *testing.T) {
 
 	p1 := etl.New()
 	p1.From(batchesSource{batches: []etl.Batch{batch(t, schema, 1)}}).
-		To(archive.NewSink(bucket, "orders.parquet", archive.Parquet()))
+		To(filesink.New(bucket, "orders.parquet", filesink.Parquet()))
 	if err := p1.Run(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
-	// Default IfNotExist:true rejects a second write to the same key.
+	// Default: writing to an existing key succeeds and overwrites it.
 	p2 := etl.New()
-	p2.From(batchesSource{batches: []etl.Batch{batch(t, schema, 2)}}).
-		To(archive.NewSink(bucket, "orders.parquet", archive.Parquet()))
-	if err := p2.Run(context.Background()); err == nil {
-		t.Fatal("want error writing to an existing key by default")
-	}
-
-	// Explicit WithWriterOptions opts into overwrite.
-	p3 := etl.New()
-	p3.From(batchesSource{batches: []etl.Batch{batch(t, schema, 3, 4)}}).
-		To(archive.NewSink(bucket, "orders.parquet", archive.Parquet(),
-			archive.WithWriterOptions(&blob.WriterOptions{})))
-	if err := p3.Run(context.Background()); err != nil {
+	p2.From(batchesSource{batches: []etl.Batch{batch(t, schema, 2, 3)}}).
+		To(filesink.New(bucket, "orders.parquet", filesink.Parquet()))
+	if err := p2.Run(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -260,5 +251,29 @@ func TestSinkWriterOptionsOverrideDefaults(t *testing.T) {
 	_, table := readParquet(t, data)
 	if table.NumRows() != 2 {
 		t.Fatalf("rows=%d, want 2 after overwrite", table.NumRows())
+	}
+}
+
+func TestSinkWithWriterOptionsIfNotExistOptsIntoArchivalSemantics(t *testing.T) {
+	bucket := memblob.OpenBucket(nil)
+	defer bucket.Close()
+
+	schema := fieldSchema("value")
+	archivalOpt := filesink.WithWriterOptions(&blob.WriterOptions{IfNotExist: true})
+
+	p1 := etl.New()
+	p1.From(batchesSource{batches: []etl.Batch{batch(t, schema, 1)}}).
+		To(filesink.New(bucket, "orders.parquet", filesink.Parquet(), archivalOpt))
+	if err := p1.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// With IfNotExist opted in, writing to the same key fails instead of
+	// overwriting — the archival pattern.
+	p2 := etl.New()
+	p2.From(batchesSource{batches: []etl.Batch{batch(t, schema, 2)}}).
+		To(filesink.New(bucket, "orders.parquet", filesink.Parquet(), archivalOpt))
+	if err := p2.Run(context.Background()); err == nil {
+		t.Fatal("want error writing to an existing key with IfNotExist opted in")
 	}
 }

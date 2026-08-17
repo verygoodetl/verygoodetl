@@ -25,7 +25,7 @@ The lifecycle contract is deliberately strong:
 
 If any stage fails, the pipeline context is canceled before that stage's downstream edges are closed. Downstream stages therefore must not interpret an upstream failure as a successful end-of-stream and run `Finish` on partial data.
 
-This preserves the useful distinction from goetl between processing data as it arrives and finalizing work only when all data is known to have arrived.
+This preserves a useful distinction between processing data as it arrives and finalizing work only when all data is known to have arrived.
 
 ## Batch ownership
 
@@ -59,7 +59,7 @@ The core runtime provides `Stream.CopyTo` as the primitive needed to branch unmo
 source --> batches --+--> transforms --> reporting database
 ```
 
-The `archive` package (`archive.Sink`) implements this side sink today: it writes batches to a Parquet or Arrow IPC file via `gocloud.dev/blob`, so the same code targets S3, GCS, or local disk. It delivers two of the stronger semantics gestured at above: immutable writes (`IfNotExist` is the default, so writing to an existing key fails rather than silently overwriting a prior archive) and schema metadata (Parquet archives store the exact Arrow schema in file metadata, not just Parquet's own lossier physical-type inference). Source/run metadata conventions, partitioning, completion manifests, and replay tooling are still deliberately out of scope — `archive.Sink` is a low-level, single-object primitive, not the full manifest/replay system; those remain layered concerns for later.
+The `filesink` package (`filesink.Sink`) implements this side sink today: it writes batches to a Parquet, Arrow IPC, or CSV file via `gocloud.dev/blob`, so the same code targets S3, GCS, or local disk. `filesink.Sink` is a general-purpose file writer, not an archive-specific type — by default, writing to an existing key overwrites it, matching ordinary file-writing expectations (e.g. a staging file rewritten each run ahead of a database load, or a regenerated report). The immutable-writes semantic this section gestures at is available but is an explicit opt-in, not the default: pass `WithWriterOptions(&blob.WriterOptions{IfNotExist: true})` to make writing to an existing key fail instead of overwrite. Parquet also stores the exact Arrow schema in file metadata (not just Parquet's own lossier physical-type inference), independent of which write mode is used. Source/run metadata conventions, partitioning, completion manifests, and replay tooling are still deliberately out of scope — `filesink.Sink` is a low-level, single-object primitive, not the full manifest/replay system; those remain layered concerns for later.
 
 The long-term goal is that the transform portion of a production pipeline can be run unchanged against archived source data to rebuild derived outputs.
 

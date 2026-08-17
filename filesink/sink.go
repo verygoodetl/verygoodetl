@@ -1,4 +1,4 @@
-package archive
+package filesink
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	etl "github.com/verygoodetl/verygoodetl"
 )
 
-// Sink archives batches to a single object at key in bucket, encoded with
+// Sink writes batches to a single object at key in bucket, encoded with
 // format. A Sink writes exactly one object and must be attached to exactly
 // one node in a pipeline; it is not safe to reuse across multiple streams.
 type Sink struct {
@@ -33,25 +33,26 @@ var _ etl.Sink = (*Sink)(nil)
 type SinkOption func(*Sink)
 
 // WithWriterOptions overrides the blob.WriterOptions used to open the
-// destination object. Without this option, a Sink sets ContentType from the
-// Format and IfNotExist to true, so writing to a key that already exists
-// fails rather than silently overwriting a prior archive. Pass
-// WithWriterOptions explicitly (e.g. with a zero-value *blob.WriterOptions)
-// to allow overwriting.
+// destination object. Without this option, a Sink sets only ContentType
+// from the Format and otherwise uses gocloud's defaults, so writing to an
+// existing key overwrites it. For durable, archival-style writes where a
+// key must never be silently overwritten, pass
+// WithWriterOptions(&blob.WriterOptions{IfNotExist: true}) — this makes
+// writing to an existing key fail instead.
 func WithWriterOptions(o *blob.WriterOptions) SinkOption {
 	return func(s *Sink) { s.writerOpts = o }
 }
 
-// WithSchema forces Sink to write a valid, empty archive object if Finish
-// runs without any batch ever having been consumed. Without this option, a
-// Sink that never receives a batch writes nothing.
+// WithSchema forces Sink to write a valid, empty object if Finish runs
+// without any batch ever having been consumed. Without this option, a Sink
+// that never receives a batch writes nothing.
 func WithSchema(schema *arrow.Schema) SinkOption {
 	return func(s *Sink) { s.explicitSchema = schema }
 }
 
-// NewSink creates a Sink that archives batches to key in bucket using
+// New creates a Sink that writes batches to key in bucket using
 // format.
-func NewSink(bucket *blob.Bucket, key string, format Format, opts ...SinkOption) *Sink {
+func New(bucket *blob.Bucket, key string, format Format, opts ...SinkOption) *Sink {
 	s := &Sink{bucket: bucket, key: key, format: format}
 	for _, opt := range opts {
 		opt(s)
@@ -68,7 +69,7 @@ func (s *Sink) Consume(ctx context.Context, b etl.Batch) error {
 	}
 	if err := s.rw.Write(b.Record()); err != nil {
 		s.abort()
-		return fmt.Errorf("archive: write batch: %w", err)
+		return fmt.Errorf("filesink: write batch: %w", err)
 	}
 	return nil
 }
@@ -86,13 +87,13 @@ func (s *Sink) Finish(ctx context.Context) error {
 
 	if err := s.rw.Close(); err != nil {
 		s.abort()
-		return fmt.Errorf("archive: close format writer: %w", err)
+		return fmt.Errorf("filesink: close format writer: %w", err)
 	}
 	if err := s.bw.Close(); err != nil {
 		if s.cancel != nil {
 			s.cancel()
 		}
-		return fmt.Errorf("archive: commit object: %w", err)
+		return fmt.Errorf("filesink: commit object: %w", err)
 	}
 	return nil
 }
@@ -107,7 +108,7 @@ func (s *Sink) open(ctx context.Context, schema *arrow.Schema) error {
 	bw, err := s.bucket.NewWriter(writeCtx, s.key, s.writerOptions())
 	if err != nil {
 		cancel()
-		return fmt.Errorf("archive: open writer: %w", err)
+		return fmt.Errorf("filesink: open writer: %w", err)
 	}
 
 	// Some Format implementations (e.g. Parquet's underlying writer) close
@@ -117,7 +118,7 @@ func (s *Sink) open(ctx context.Context, schema *arrow.Schema) error {
 	if err != nil {
 		cancel()
 		_ = bw.Close()
-		return fmt.Errorf("archive: new format writer: %w", err)
+		return fmt.Errorf("filesink: new format writer: %w", err)
 	}
 
 	s.started = true
@@ -143,10 +144,7 @@ func (s *Sink) writerOptions() *blob.WriterOptions {
 		}
 		return &opts
 	}
-	return &blob.WriterOptions{
-		ContentType: s.format.ContentType(),
-		IfNotExist:  true,
-	}
+	return &blob.WriterOptions{ContentType: s.format.ContentType()}
 }
 
 // abort cancels the in-flight write and releases the blob writer without

@@ -84,21 +84,28 @@ allOrders.To(sink)
 
 `mergeProcessor.Finish` will not run until both `webOrders` and `storeOrders` have finished successfully.
 
-## Archival
+## Writing files
 
-The `archive` subpackage provides a `Sink` that writes batches to a durable Parquet or Arrow IPC file, stored via [`gocloud.dev/blob`](https://gocloud.dev/howto/blob/) so the same code targets S3, GCS, or local disk by changing the bucket URL. It depends only on `gocloud.dev/blob`'s core types, never a cloud SDK directly.
+The `filesink` subpackage provides a `Sink` that writes batches to a single Parquet, Arrow IPC, or CSV file, stored via [`gocloud.dev/blob`](https://gocloud.dev/howto/blob/) so the same code targets S3, GCS, or local disk by changing the bucket URL. It depends only on `gocloud.dev/blob`'s core types, never a cloud SDK directly. `filesink.CSV()` defaults to RFC 4180 encoding — minimal quoting, doubled-quote escaping — and derives column order and NULL handling from the schema rather than sniffing the data. Two options exist for consumers that can't process compliant CSV: `WithEscapeCharacter` (e.g. a backslash instead of a doubled quote) and `WithAlwaysEncapsulate` (quote every field, not just ones that need it) — both are opt-in and off by default.
 
 ```go
 import (
     "gocloud.dev/blob"
     _ "gocloud.dev/blob/s3blob" // or gcsblob, fileblob, ...
 
-    "github.com/verygoodetl/verygoodetl/archive"
+    "github.com/verygoodetl/verygoodetl/filesink"
 )
 
 bucket, err := blob.OpenBucket(ctx, "s3://my-bucket?region=us-west-2")
 
-orders.CopyTo(archive.NewSink(bucket, "orders.parquet", archive.Parquet()))
+orders.CopyTo(filesink.New(bucket, "orders.parquet", filesink.Parquet()))
+```
+
+By default, writing to an existing key overwrites it — the usual expectation for generated output like a report or a staging file ahead of a database load. For durable, archival-style writes where a key must never be silently overwritten, opt in explicitly:
+
+```go
+orders.CopyTo(filesink.New(bucket, "orders.parquet", filesink.Parquet(),
+    filesink.WithWriterOptions(&blob.WriterOptions{IfNotExist: true})))
 ```
 
 ## SQL source
@@ -125,7 +132,7 @@ orders := pipeline.From(source)
 
 The `examples` directory has complete, runnable programs (`go run ./examples/<name>`) for common pipeline shapes:
 
-- `archive-fanout` — a source fanning out to both a durable archive and a processed sink.
+- `archive-fanout` — a source fanning out to both a durable archive (`filesink` with `IfNotExist` opted in) and a processed sink.
 - `sql-to-sink` — a SQL source with no archival step.
 - `sql-to-archive` — extract from SQL, archive the raw batches, and process the same stream into a reporting sink.
 
@@ -138,7 +145,7 @@ Batches are immutable from the runtime's point of view. This allows a batch to f
 ## What is deliberately not here yet
 
 - SQL sinks
-- CSV packages
+- CSV source (reading)
 - expression or vector-compute DSL
 - joins, aggregation, sorting, and other higher-level processors
 - scheduling or orchestration

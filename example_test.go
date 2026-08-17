@@ -8,12 +8,13 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
+	"gocloud.dev/blob"
 	"gocloud.dev/blob/memblob"
 
 	_ "modernc.org/sqlite"
 
 	etl "github.com/verygoodetl/verygoodetl"
-	"github.com/verygoodetl/verygoodetl/archive"
+	"github.com/verygoodetl/verygoodetl/filesink"
 	"github.com/verygoodetl/verygoodetl/sqlsource"
 )
 
@@ -62,7 +63,7 @@ func (s ordersSource) Run(ctx context.Context, out etl.Output) error {
 }
 
 // Example_archival shows a single stream of batches fanning out to both a
-// durable archive (via CopyTo) and a processed sink, using archive.Sink
+// durable archive (via CopyTo) and a processed sink, using filesink.Sink
 // backed by an in-memory bucket.
 func Example_archival() {
 	schema := arrow.NewSchema([]arrow.Field{{Name: "id", Type: arrow.PrimitiveTypes.Int64}}, nil)
@@ -80,7 +81,10 @@ func Example_archival() {
 
 	pipeline := etl.New()
 	orders := pipeline.From(ordersSource{record: record})
-	orders.CopyTo(archive.NewSink(bucket, "orders.parquet", archive.Parquet()))
+	// WithWriterOptions{IfNotExist: true} is the archival pattern: writing
+	// to orders.parquet a second time would fail rather than overwrite it.
+	orders.CopyTo(filesink.New(bucket, "orders.parquet", filesink.Parquet(),
+		filesink.WithWriterOptions(&blob.WriterOptions{IfNotExist: true})))
 
 	rowCount := 0
 	orders.To(etl.SinkFuncs{

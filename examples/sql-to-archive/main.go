@@ -13,12 +13,13 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"gocloud.dev/blob"
 	"gocloud.dev/blob/memblob"
 
 	_ "modernc.org/sqlite"
 
 	etl "github.com/verygoodetl/verygoodetl"
-	"github.com/verygoodetl/verygoodetl/archive"
+	"github.com/verygoodetl/verygoodetl/filesink"
 	"github.com/verygoodetl/verygoodetl/sqlsource"
 )
 
@@ -56,8 +57,12 @@ func main() {
 	pipeline := etl.New()
 	orders := pipeline.From(source)
 
-	// The raw, unmodified rows go to a durable archive...
-	orders.CopyTo(archive.NewSink(bucket, "orders.parquet", archive.Parquet()))
+	// The raw, unmodified rows go to a durable archive.
+	// WithWriterOptions{IfNotExist: true} makes this an archive rather than
+	// an ordinary overwrite-on-every-run file sink: writing orders.parquet
+	// a second time fails.
+	orders.CopyTo(filesink.New(bucket, "orders.parquet", filesink.Parquet(),
+		filesink.WithWriterOptions(&blob.WriterOptions{IfNotExist: true})))
 
 	// ...while the same rows also flow to a reporting sink. If the
 	// reporting sink's logic ever needs to change, it can be rebuilt from

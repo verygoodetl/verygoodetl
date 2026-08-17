@@ -1,4 +1,4 @@
-package archive_test
+package filesink_test
 
 import (
 	"bytes"
@@ -13,7 +13,7 @@ import (
 	"github.com/apache/arrow-go/v18/parquet/file"
 	"github.com/apache/arrow-go/v18/parquet/pqarrow"
 
-	"github.com/verygoodetl/verygoodetl/archive"
+	"github.com/verygoodetl/verygoodetl/filesink"
 )
 
 func fieldSchema(name string) *arrow.Schema {
@@ -50,7 +50,7 @@ func intRecord(t *testing.T, schema *arrow.Schema, values ...int64) arrow.Record
 
 func TestArrowIPCFormatRoundTrip(t *testing.T) {
 	schema := fieldSchema("value")
-	format := archive.ArrowIPC()
+	format := filesink.ArrowIPC()
 
 	var buf bytes.Buffer
 	w, err := format.NewWriter(schema, &buf)
@@ -93,7 +93,7 @@ func TestArrowIPCFormatRoundTrip(t *testing.T) {
 func TestArrowIPCFormatSchemaMismatch(t *testing.T) {
 	schema := fieldSchema("value")
 	other := fieldSchema("other")
-	format := archive.ArrowIPC()
+	format := filesink.ArrowIPC()
 
 	var buf bytes.Buffer
 	w, err := format.NewWriter(schema, &buf)
@@ -127,7 +127,7 @@ func readParquet(t *testing.T, data []byte) (*file.Reader, arrow.Table) {
 
 func TestParquetFormatRoundTrip(t *testing.T) {
 	schema := fieldSchema("value")
-	format := archive.Parquet()
+	format := filesink.Parquet()
 
 	var buf bytes.Buffer
 	w, err := format.NewWriter(schema, &buf)
@@ -160,7 +160,7 @@ func TestParquetFormatRoundTrip(t *testing.T) {
 
 func TestParquetFormatWithCompression(t *testing.T) {
 	schema := fieldSchema("value")
-	format := archive.Parquet(archive.WithCompression(compress.Codecs.Gzip))
+	format := filesink.Parquet(filesink.WithCompression(compress.Codecs.Gzip))
 
 	var buf bytes.Buffer
 	w, err := format.NewWriter(schema, &buf)
@@ -187,7 +187,7 @@ func TestParquetFormatWithCompression(t *testing.T) {
 func TestParquetFormatSchemaMismatch(t *testing.T) {
 	schema := fieldSchema("value")
 	other := fieldSchema("other")
-	format := archive.Parquet()
+	format := filesink.Parquet()
 
 	var buf bytes.Buffer
 	w, err := format.NewWriter(schema, &buf)

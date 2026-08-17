@@ -1,0 +1,197 @@
+package filesink
+
+import (
+	"encoding/base64"
+	"fmt"
+	"io"
+	"strconv"
+	"time"
+
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+)
+
+type csvFormat struct {
+	delimiter         rune
+	useCRLF           bool
+	writeHeader       bool
+	nullString        string
+	escapeCharacter   string
+	alwaysEncapsulate bool
+}
+
+// CSVOption configures the CSV format.
+type CSVOption func(*csvFormat)
+
+// WithDelimiter sets the field delimiter. Defaults to ','.
+func WithDelimiter(r rune) CSVOption {
+	return func(f *csvFormat) { f.delimiter = r }
+}
+
+// WithCRLF selects "\r\n" as the line terminator instead of the default
+// "\n". Note a standard-library limitation this inherits: encoding/csv
+// silently drops a bare '\r' inside field content (one not immediately
+// followed by '\n') when CRLF mode is enabled.
+func WithCRLF(useCRLF bool) CSVOption {
+	return func(f *csvFormat) { f.useCRLF = useCRLF }
+}
+
+// WithHeader controls whether a header row of field names is written.
+// Defaults to true.
+func WithHeader(write bool) CSVOption {
+	return func(f *csvFormat) { f.writeHeader = write }
+}
+
+// WithNullString sets the text written for a null value. Defaults to an
+// empty string. Some consumers expect a specific sentinel instead — for
+// example Postgres's COPY command distinguishes a quoted empty string from
+// an unquoted one, and conventionally uses `\N` for NULL in text format.
+func WithNullString(s string) CSVOption {
+	return func(f *csvFormat) { f.nullString = s }
+}
+
+// WithEscapeCharacter sets the sequence written before an embedded quote
+// character inside a quoted field. Defaults to an empty string, which
+// selects RFC 4180's standard doubled-quote escaping. Only override this to
+// interoperate with a consumer that expects a different convention (e.g. a
+// backslash) — output written with a non-default escape character is not
+// RFC 4180-compliant and will not round-trip through a standard CSV reader.
+func WithEscapeCharacter(s string) CSVOption {
+	return func(f *csvFormat) { f.escapeCharacter = s }
+}
+
+// WithAlwaysEncapsulate quotes every field unconditionally, instead of only
+// fields that actually require it (those containing the delimiter, a quote
+// character, \r, \n, or leading whitespace). Defaults to false.
+func WithAlwaysEncapsulate(always bool) CSVOption {
+	return func(f *csvFormat) { f.alwaysEncapsulate = always }
+}
+
+// CSV selects the CSV file format. Column order and names come from the
+// schema (not inferred from data). Encoding defaults to RFC 4180 — minimal
+// quoting, doubled-quote escaping — via a small fork of the standard
+// library's encoding/csv (see csv_writer.go) that adds WithEscapeCharacter
+// and WithAlwaysEncapsulate as opt-in, non-standard extensions.
+func CSV(opts ...CSVOption) Format {
+	f := csvFormat{delimiter: ',', writeHeader: true}
+	for _, opt := range opts {
+		opt(&f)
+	}
+	return f
+}
+
+func (csvFormat) ContentType() string { return "text/csv" }
+
+func (f csvFormat) NewWriter(schema *arrow.Schema, w io.Writer) (RecordWriter, error) {
+	formatters := make([]formatter, schema.NumFields())
+	for i, field := range schema.Fields() {
+		fm, err := csvFormatterFor(field.Type)
+		if err != nil {
+			return nil, fmt.Errorf("field %d (%s): %w", i, field.Name, err)
+		}
+		formatters[i] = fm
+	}
+
+	cw := newCSVWriter(w)
+	cw.Comma = f.delimiter
+	cw.UseCRLF = f.useCRLF
+	cw.EscapeCharacter = f.escapeCharacter
+	cw.AlwaysEncapsulate = f.alwaysEncapsulate
+
+	return &csvRecordWriter{
+		w:           cw,
+		schema:      schema,
+		formatters:  formatters,
+		nullString:  f.nullString,
+		writeHeader: f.writeHeader,
+		row:         make([]string, schema.NumFields()),
+	}, nil
+}
+
+type csvRecordWriter struct {
+	w           *csvWriter
+	schema      *arrow.Schema
+	formatters  []formatter
+	nullString  string
+	writeHeader bool
+	headerDone  bool
+	row         []string
+}
+
+func (w *csvRecordWriter) Write(rec arrow.Record) error {
+	if w.writeHeader && !w.headerDone {
+		header := make([]string, w.schema.NumFields())
+		for i, field := range w.schema.Fields() {
+			header[i] = field.Name
+		}
+		if err := w.w.Write(header); err != nil {
+			return fmt.Errorf("write header: %w", err)
+		}
+		w.headerDone = true
+	}
+
+	cols := make([]arrow.Array, rec.NumCols())
+	for c := range cols {
+		cols[c] = rec.Column(c)
+	}
+
+	for r := 0; r < int(rec.NumRows()); r++ {
+		for c, col := range cols {
+			if col.IsNull(r) {
+				w.row[c] = w.nullString
+				continue
+			}
+			w.row[c] = w.formatters[c](col, r)
+		}
+		if err := w.w.Write(w.row); err != nil {
+			return fmt.Errorf("write row %d: %w", r, err)
+		}
+	}
+
+	w.w.Flush()
+	return w.w.Error()
+}
+
+func (w *csvRecordWriter) Close() error {
+	w.w.Flush()
+	return w.w.Error()
+}
+
+// formatter renders one non-null value from column arr at row i as CSV
+// field text. Unlike sqlsource's converters, no error is possible here:
+// these read from Arrow's own already-typed arrays, not messy driver
+// values.
+type formatter func(arr arrow.Array, i int) string
+
+func csvFormatterFor(dt arrow.DataType) (formatter, error) {
+	switch dt.ID() {
+	case arrow.INT64:
+		return func(arr arrow.Array, i int) string {
+			return strconv.FormatInt(arr.(*array.Int64).Value(i), 10)
+		}, nil
+	case arrow.FLOAT64:
+		return func(arr arrow.Array, i int) string {
+			return strconv.FormatFloat(arr.(*array.Float64).Value(i), 'g', -1, 64)
+		}, nil
+	case arrow.BOOL:
+		return func(arr arrow.Array, i int) string {
+			return strconv.FormatBool(arr.(*array.Boolean).Value(i))
+		}, nil
+	case arrow.STRING:
+		return func(arr arrow.Array, i int) string {
+			return arr.(*array.String).Value(i)
+		}, nil
+	case arrow.BINARY:
+		return func(arr arrow.Array, i int) string {
+			return base64.StdEncoding.EncodeToString(arr.(*array.Binary).Value(i))
+		}, nil
+	case arrow.TIMESTAMP:
+		unit := dt.(*arrow.TimestampType).Unit
+		return func(arr arrow.Array, i int) string {
+			ts := arr.(*array.Timestamp).Value(i)
+			return ts.ToTime(unit).Format(time.RFC3339Nano)
+		}, nil
+	default:
+		return nil, fmt.Errorf("unsupported type %s", dt)
+	}
+}

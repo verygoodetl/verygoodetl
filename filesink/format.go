@@ -1,4 +1,4 @@
-package archive
+package filesink
 
 import (
 	"io"
@@ -58,7 +58,7 @@ func WithCompression(codec compress.Compression) ParquetOption {
 
 // Parquet selects the Parquet file format. By default it compresses with
 // Snappy and stores the exact Arrow schema in file metadata (rather than
-// relying on Parquet's lossier physical-type inference) so archived data can
+// relying on Parquet's lossier physical-type inference) so written data can
 // be read back with its original Arrow types.
 func Parquet(opts ...ParquetOption) Format {
 	f := parquetFormat{compression: compress.Codecs.Snappy}

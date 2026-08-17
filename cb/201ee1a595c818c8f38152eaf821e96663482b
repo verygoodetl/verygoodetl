@@ -1,0 +1,44 @@
+go.mod
+  s_20acc379ab977d::t_1da5a5375c46f3 37-38
+  s_20acc379ab977d::t_955daa635db3e2 5-8,11-15,17,19-22,24-26,28-33,35-36,39-41,43-46
+archive/sink.go
+  s_20acc379ab977d::t_0f462c69a84684 1-5,7-112,117-128,137-163
+  s_20acc379ab977d::t_4034de3d37a5cc 113-116,129-136
+  s_20acc379ab977d::t_1e05dbf5d184ad 6
+README.md
+  s_20acc379ab977d::t_da8f5d317c85ae 87-103
+  s_20acc379ab977d::t_22bcc8a46387be 113,117
+ARCHITECTURE.md
+  s_20acc379ab977d::t_24db2c83037060 62
+archive/format.go
+  s_20acc379ab977d::t_75a05f39dc9448 1-77
+archive/doc.go
+  s_20acc379ab977d::t_35aa371184d44a 1-17
+archive/format_test.go
+  s_20acc379ab977d::t_542881ce0885f0 23-38
+  s_20acc379ab977d::t_123e334188f94f 1-22,39-147,149-200
+  s_20acc379ab977d::t_74662b8aef999e 148
+archive/sink_test.go
+  s_20acc379ab977d::t_d2e1eb622f4180 1-3,5-13,15-71,73-94,96-144,146-264
+  s_20acc379ab977d::t_845c29329fe69e 4,14
+  s_20acc379ab977d::t_3dcf809a8e5705 95
+  s_20acc379ab977d::t_2e20df7d98dbc7 72,145
+go.sum
+  s_20acc379ab977d::t_8b2210d8efc19d 1-22,29-70,73-86,89-90,95-98,101-106,119-120,123-130,135-156,159-176,181-192
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "cb201ee1a595c818c8f38152eaf821e96663482b",
+  "prompts": {},
+  "sessions": {
+    "s_20acc379ab977d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3e07e893-587b-4080-a606-44201910a3c3",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    }
+  }
+}

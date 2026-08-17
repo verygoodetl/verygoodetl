@@ -1,0 +1,19 @@
+README.md
+  s_20acc379ab977d::t_e494cc036ec172 29-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "71322834f1805990849db99f92d3191ac0f834e0",
+  "prompts": {},
+  "sessions": {
+    "s_20acc379ab977d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3e07e893-587b-4080-a606-44201910a3c3",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    }
+  }
+}

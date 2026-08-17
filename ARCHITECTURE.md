@@ -59,7 +59,7 @@ The core runtime provides `Stream.CopyTo` as the primitive needed to branch unmo
 source --> batches --+--> transforms --> reporting database
 ```
 
-A future archive package should add stronger semantics such as immutable writes, source/run metadata, schema metadata, partitioning, completion manifests, and replay. Those semantics do not belong in the generic graph runtime.
+The `archive` package (`archive.Sink`) implements this side sink today: it writes batches to a Parquet or Arrow IPC file via `gocloud.dev/blob`, so the same code targets S3, GCS, or local disk. It delivers two of the stronger semantics gestured at above: immutable writes (`IfNotExist` is the default, so writing to an existing key fails rather than silently overwriting a prior archive) and schema metadata (Parquet archives store the exact Arrow schema in file metadata, not just Parquet's own lossier physical-type inference). Source/run metadata conventions, partitioning, completion manifests, and replay tooling are still deliberately out of scope — `archive.Sink` is a low-level, single-object primitive, not the full manifest/replay system; those remain layered concerns for later.
 
 The long-term goal is that the transform portion of a production pipeline can be run unchanged against archived source data to rebuild derived outputs.
 

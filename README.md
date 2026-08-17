@@ -84,6 +84,23 @@ allOrders.To(sink)
 
 `mergeProcessor.Finish` will not run until both `webOrders` and `storeOrders` have finished successfully.
 
+## Archival
+
+The `archive` subpackage provides a `Sink` that writes batches to a durable Parquet or Arrow IPC file, stored via [`gocloud.dev/blob`](https://gocloud.dev/howto/blob/) so the same code targets S3, GCS, or local disk by changing the bucket URL. It depends only on `gocloud.dev/blob`'s core types, never a cloud SDK directly.
+
+```go
+import (
+    "gocloud.dev/blob"
+    _ "gocloud.dev/blob/s3blob" // or gcsblob, fileblob, ...
+
+    "github.com/verygoodetl/verygoodetl/archive"
+)
+
+bucket, err := blob.OpenBucket(ctx, "s3://my-bucket?region=us-west-2")
+
+orders.CopyTo(archive.NewSink(bucket, "orders.parquet", archive.Parquet()))
+```
+
 ## Batch ownership
 
 Batches are immutable from the runtime's point of view. This allows a batch to fan out without copying its Arrow buffers.
@@ -92,12 +109,12 @@ Batches are immutable from the runtime's point of view. This allows a batch to f
 
 ## What is deliberately not here yet
 
-- S3 / data-lake archive implementation
 - SQL sources and sinks
-- CSV / Parquet packages
+- CSV packages
 - expression or vector-compute DSL
 - joins, aggregation, sorting, and other higher-level processors
 - scheduling or orchestration
+- completion manifests and replay tooling for archived data
 
 Those should be built on top of a runtime whose semantics are boring and correct.
 

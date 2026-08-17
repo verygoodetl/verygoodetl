@@ -26,7 +26,8 @@ VeryGoodETL is under active design. The initial runtime is intentionally small w
 go get github.com/verygoodetl/verygoodetl
 ```
 
-The package name is `etl`:
+The package name is `etl`. Because the import path's last segment
+(`verygoodetl`) doesn't match, `goimports` will add an explicit alias:
 
 ```go
 import etl "github.com/verygoodetl/verygoodetl"

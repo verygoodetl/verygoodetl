@@ -117,6 +117,13 @@ func (s Stream) To(sink Sink) {
 	p.connect(s.node, n)
 }
 
+// Tap attaches a sink while preserving the stream for additional processing.
+// It is useful for side outputs such as raw archival.
+func (s Stream) Tap(sink Sink) Stream {
+	s.To(sink)
+	return s
+}
+
 func (p *Pipeline) connect(from, to *node) {
 	e := &edge{ch: make(chan envelope, p.bufferSize)}
 	from.outgoing = append(from.outgoing, e)
@@ -155,9 +162,14 @@ func (p *Pipeline) Run(ctx context.Context) error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := runNode(ctx, n); err != nil {
+			err := runNode(ctx, n)
+			if err != nil {
+				// Cancel the graph before closing this stage's outputs. This prevents
+				// downstream stages from observing a clean EOF and entering Finish
+				// after an upstream failure.
 				fail(fmt.Errorf("stage %d: %w", n.id, err))
 			}
+			closeEdges(n.outgoing)
 		}()
 	}
 
@@ -192,7 +204,6 @@ func (p *Pipeline) Run(ctx context.Context) error {
 
 func runNode(ctx context.Context, n *node) error {
 	out := nodeOutput{ctx: ctx, edges: n.outgoing}
-	defer closeEdges(n.outgoing)
 
 	switch n.kind {
 	case sourceNode:
@@ -281,9 +292,11 @@ func consumeInputs(ctx context.Context, inputs []*edge, consume func(Batch) erro
 					case merged <- env.batch:
 					case <-ctx.Done():
 						env.batch.Release()
+						drainEdge(input)
 						return
 					}
 				case <-ctx.Done():
+					drainEdge(input)
 					return
 				}
 			}
@@ -307,5 +320,11 @@ func consumeInputs(ctx context.Context, inputs []*edge, consume func(Batch) erro
 		case <-ctx.Done():
 			return ctx.Err()
 		}
+	}
+}
+
+func drainEdge(e *edge) {
+	for env := range e.ch {
+		env.batch.Release()
 	}
 }

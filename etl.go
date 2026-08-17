@@ -43,14 +43,18 @@ type Output interface {
 	Send(context.Context, Batch) error
 }
 
-// Source produces batches for a pipeline.
+// Source produces batches for a pipeline. Run must return any error from
+// Output.Send rather than discarding it; a swallowed Send error can prevent
+// the pipeline from unwinding on cancellation or failure.
 type Source interface {
 	Run(context.Context, Output) error
 }
 
 // Processor consumes batches and may emit zero or more batches. Finish is
 // called exactly once after every upstream input has completed successfully.
-// No further call to Process can occur after Finish begins.
+// No further call to Process can occur after Finish begins. As with Source,
+// Process and Finish must return any error from Output.Send rather than
+// discarding it.
 type Processor interface {
 	Process(context.Context, Batch, Output) error
 	Finish(context.Context, Output) error

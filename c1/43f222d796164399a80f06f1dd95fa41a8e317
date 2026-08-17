@@ -1,0 +1,74 @@
+filesink/csv_writer.go
+  s_20acc379ab977d::t_3abdf8f8380514 53
+  s_20acc379ab977d::t_7a2032e2150acd 1-52,54-204
+ARCHITECTURE.md
+  s_20acc379ab977d::t_6fb88d77d9a767 28
+  s_20acc379ab977d::t_55bf071d652db4 62
+filesink/sink.go
+  s_20acc379ab977d::t_dce9ab6a225563 36-41,46-48
+  s_20acc379ab977d::t_7a2032e2150acd 1-13,15-35,42-45,49-52,54,56-71,73-89,91-95,97-110,112-120,122-146,148-161
+  s_20acc379ab977d::t_025d0319b20bdd 72,90,96,111,121
+  s_20acc379ab977d::t_47a72e5070469a 14
+  s_20acc379ab977d::t_8b7dab14adb59c 53,55
+  s_20acc379ab977d::t_00958fe0e005b0 147
+filesink/format.go
+  s_20acc379ab977d::t_7a2032e2150acd 1-60,62-77
+  s_20acc379ab977d::t_825910acd495d5 61
+README.md
+  s_20acc379ab977d::t_0c63844954e2d2 87,89,96,102-106,108
+  s_20acc379ab977d::t_8b7dab14adb59c 101,107
+  s_20acc379ab977d::t_36a7b231196e3e 148
+  s_20acc379ab977d::t_20e9febb0c3fa3 135
+filesink/csv_test.go
+  s_20acc379ab977d::t_4a42b53b208875 80,147,196,229,264,303,353,386,426,454
+  s_20acc379ab977d::t_3bc6fbff77453e 17
+  s_20acc379ab977d::t_8b7dab14adb59c 467
+  s_20acc379ab977d::t_7a2032e2150acd 1-16,18-79,81-146,148-195,197-228,230-263,265-302,304-352,354-385,387-425,427-453,455-466,468-489
+filesink/csv.go
+  s_20acc379ab977d::t_7a2032e2150acd 1-197
+filesink/sink_test.go
+  s_20acc379ab977d::t_7a2032e2150acd 1-20,22-57,59-84,86-109,111-130,132-159,161-183,185-214,216-225,227-233,235-238,240,244-253,278-279
+  s_20acc379ab977d::t_3bc6fbff77453e 21
+  s_20acc379ab977d::t_8b7dab14adb59c 58,85,110,131,160,215,234,242,266,275
+  s_20acc379ab977d::t_afdd2ab8d5e093 226,239,241,243,254-265,267-274,276-277
+  s_20acc379ab977d::t_4a42b53b208875 184
+filesink/doc.go
+  s_20acc379ab977d::t_7a2032e2150acd 3-5,11-22
+  s_20acc379ab977d::t_cfc8f1ae43e454 1-2,6-10
+examples/sql-to-archive/main.go
+  s_20acc379ab977d::t_7281b62bde3d74 16
+  s_20acc379ab977d::t_0b6ddbbf546f06 60-63,65
+  s_20acc379ab977d::t_8b7dab14adb59c 64
+  s_20acc379ab977d::t_3bc6fbff77453e 22
+example_test.go
+  s_20acc379ab977d::t_8b7dab14adb59c 86
+  s_20acc379ab977d::t_4a42b53b208875 66
+  s_20acc379ab977d::t_3bc6fbff77453e 17
+  s_20acc379ab977d::t_a3650ce2354652 11
+  s_20acc379ab977d::t_2042eb2e359619 84-85,87
+filesink/format_test.go
+  s_20acc379ab977d::t_3bc6fbff77453e 16
+  s_20acc379ab977d::t_4a42b53b208875 53,96,130,163,190
+  s_20acc379ab977d::t_7a2032e2150acd 1-15,17-52,54-95,97-129,131-162,164-189,191-200
+examples/archive-fanout/main.go
+  s_20acc379ab977d::t_8b7dab14adb59c 57
+  s_20acc379ab977d::t_3bc6fbff77453e 18
+  s_20acc379ab977d::t_7cac111e07e354 14
+  s_20acc379ab977d::t_3246882fa64ca7 54-56,58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "c143f222d796164399a80f06f1dd95fa41a8e317",
+  "prompts": {},
+  "sessions": {
+    "s_20acc379ab977d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3e07e893-587b-4080-a606-44201910a3c3",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    }
+  }
+}

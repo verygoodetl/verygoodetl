@@ -63,6 +63,12 @@ The `archive` package (`archive.Sink`) implements this side sink today: it write
 
 The long-term goal is that the transform portion of a production pipeline can be run unchanged against archived source data to rebuild derived outputs.
 
+## SQL sources: explicit schema over driver inference
+
+The `sqlsource` package (`sqlsource.Source`) runs a SQL query via `database/sql` and emits batches. It deliberately requires a caller-supplied `*arrow.Schema` rather than inferring Arrow types from driver metadata.
+
+`database/sql` exposes an optional `driver.RowsColumnTypeScanType` interface that a library could use to infer types automatically, but its implementation is inconsistent across drivers — common SQLite drivers don't implement it at all and fall back to a generic `interface{}`. Automatic inference would therefore be silently unreliable depending on which driver and version happens to be in use: the same column could land as a different Arrow type on different setups. Requiring an explicit schema up front trades a little convenience for behavior that's predictable and auditable regardless of driver, which is the same trade-off this runtime already makes elsewhere (e.g. the strong `Finish` lifecycle contract over a more permissive one).
+
 ## Scheduling boundary
 
 VeryGoodETL does not decide when jobs run.

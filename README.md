@@ -101,6 +101,34 @@ bucket, err := blob.OpenBucket(ctx, "s3://my-bucket?region=us-west-2")
 orders.CopyTo(archive.NewSink(bucket, "orders.parquet", archive.Parquet()))
 ```
 
+## SQL source
+
+The `sqlsource` subpackage provides a `Source` that runs a SQL query via the standard library's `database/sql` and emits the results as Arrow batches. Column types are driven by a caller-supplied schema, never inferred from driver metadata — `database/sql`'s optional type-inference hooks are inconsistently implemented across drivers, so this package takes no dependency on any specific driver and asks for an explicit `*arrow.Schema` instead.
+
+```go
+import (
+    "database/sql"
+
+    _ "modernc.org/sqlite" // or any database/sql driver
+
+    "github.com/verygoodetl/verygoodetl/sqlsource"
+)
+
+db, err := sql.Open("sqlite", "file:orders.db")
+
+source, err := sqlsource.New(db, "SELECT id, name FROM orders", schema)
+
+orders := pipeline.From(source)
+```
+
+## Examples
+
+The `examples` directory has complete, runnable programs (`go run ./examples/<name>`) for common pipeline shapes:
+
+- `archive-fanout` — a source fanning out to both a durable archive and a processed sink.
+- `sql-to-sink` — a SQL source with no archival step.
+- `sql-to-archive` — extract from SQL, archive the raw batches, and process the same stream into a reporting sink.
+
 ## Batch ownership
 
 Batches are immutable from the runtime's point of view. This allows a batch to fan out without copying its Arrow buffers.
@@ -109,7 +137,7 @@ Batches are immutable from the runtime's point of view. This allows a batch to f
 
 ## What is deliberately not here yet
 
-- SQL sources and sinks
+- SQL sinks
 - CSV packages
 - expression or vector-compute DSL
 - joins, aggregation, sorting, and other higher-level processors

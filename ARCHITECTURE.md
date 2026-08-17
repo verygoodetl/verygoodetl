@@ -51,7 +51,7 @@ On cancellation, unread retained batches are drained and released so failed pipe
 
 A reporting database is considered a derived artifact, not the durable source of truth.
 
-The core runtime provides `Stream.Tap` as the primitive needed to branch unmodified batches to a side sink:
+The core runtime provides `Stream.CopyTo` as the primitive needed to branch unmodified batches to a side sink:
 
 ```text
                      +--> durable raw archive

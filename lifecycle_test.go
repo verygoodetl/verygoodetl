@@ -71,13 +71,13 @@ func TestContextCancellationCancelsGraphAndSkipsFinish(t *testing.T) {
 	}
 }
 
-func TestTapPreservesStream(t *testing.T) {
+func TestCopyToPreservesStream(t *testing.T) {
 	p := New()
 	stream := p.From(batchesSource{batches: []Batch{intBatch(t, 1, 2)}})
 
 	rawRows := 0
 	cleanRows := 0
-	stream.Tap(SinkFuncs{ConsumeFunc: func(_ context.Context, b Batch) error {
+	stream.CopyTo(SinkFuncs{ConsumeFunc: func(_ context.Context, b Batch) error {
 		rawRows += int(b.NumRows())
 		return nil
 	}}).Process(ProcessorFuncs{}).To(SinkFuncs{ConsumeFunc: func(_ context.Context, b Batch) error {

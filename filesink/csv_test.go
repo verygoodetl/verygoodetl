@@ -851,6 +851,75 @@ func TestCSVWithEscapeFormulasAppliesToBinaryField(t *testing.T) {
 	}
 }
 
+func TestCSVWithEscapeFormulasEscapesHeader(t *testing.T) {
+	schema := arrow.NewSchema([]arrow.Field{{Name: "=cmd", Type: arrow.PrimitiveTypes.Int64}}, nil)
+
+	b := array.NewInt64Builder(memory.DefaultAllocator)
+	defer b.Release()
+	b.Append(1)
+	arr := b.NewArray()
+	defer arr.Release()
+	rec := array.NewRecord(schema, []arrow.Array{arr}, 1)
+	defer rec.Release()
+
+	var buf bytes.Buffer
+	w, err := filesink.CSV(filesink.WithEscapeFormulas(true)).NewWriter(schema, &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Write(rec); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	r := csv.NewReader(bytes.NewReader(buf.Bytes()))
+	rows, err := r.ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "'=cmd"; rows[0][0] != want {
+		t.Fatalf("header=%q, want %q escaped like any other formula-triggering cell", rows[0][0], want)
+	}
+}
+
+func TestCSVWriteSchemaDifferingOnlyInNullabilityAndMetadataSucceeds(t *testing.T) {
+	writerSchema := arrow.NewSchema([]arrow.Field{
+		{Name: "id", Type: arrow.PrimitiveTypes.Int64},
+		{Name: "name", Type: arrow.BinaryTypes.String, Nullable: true},
+	}, nil)
+	recordSchema := arrow.NewSchema([]arrow.Field{
+		{Name: "id", Type: arrow.PrimitiveTypes.Int64, Nullable: true},
+		{Name: "name", Type: arrow.BinaryTypes.String, Metadata: arrow.NewMetadata([]string{"source"}, []string{"join"})},
+	}, nil)
+
+	idB := array.NewInt64Builder(memory.DefaultAllocator)
+	defer idB.Release()
+	idB.Append(1)
+	idArr := idB.NewArray()
+	defer idArr.Release()
+	nameB := array.NewStringBuilder(memory.DefaultAllocator)
+	defer nameB.Release()
+	nameB.Append("widget")
+	nameArr := nameB.NewArray()
+	defer nameArr.Release()
+	rec := array.NewRecord(recordSchema, []arrow.Array{idArr, nameArr}, 1)
+	defer rec.Release()
+
+	var buf bytes.Buffer
+	w, err := filesink.CSV().NewWriter(writerSchema, &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Write(rec); err != nil {
+		t.Fatalf("Write with a schema differing only in nullability/metadata: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSinkHappyPathCSV(t *testing.T) {
 	bucket := memblob.OpenBucket(nil)
 	defer bucket.Close()

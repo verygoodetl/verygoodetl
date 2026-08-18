@@ -163,34 +163,40 @@ func (f csvFormat) NewWriter(schema *arrow.Schema, w io.Writer) (RecordWriter, e
 	cw.AlwaysEncapsulate = f.alwaysEncapsulate
 
 	return &csvRecordWriter{
-		w:           cw,
-		schema:      schema,
-		formatters:  formatters,
-		nullString:  f.nullString,
-		writeHeader: f.writeHeader,
-		row:         make([]string, schema.NumFields()),
+		w:              cw,
+		schema:         schema,
+		formatters:     formatters,
+		nullString:     f.nullString,
+		writeHeader:    f.writeHeader,
+		escapeFormulas: f.escapeFormulas,
+		row:            make([]string, schema.NumFields()),
 	}, nil
 }
 
 type csvRecordWriter struct {
-	w           *csvWriter
-	schema      *arrow.Schema
-	formatters  []formatter
-	nullString  string
-	writeHeader bool
-	headerDone  bool
-	row         []string
+	w              *csvWriter
+	schema         *arrow.Schema
+	formatters     []formatter
+	nullString     string
+	writeHeader    bool
+	escapeFormulas bool
+	headerDone     bool
+	row            []string
 }
 
 func (w *csvRecordWriter) Write(rec arrow.Record) error {
-	if !rec.Schema().Equal(w.schema) {
+	if !csvSchemaCompatible(rec.Schema(), w.schema) {
 		return fmt.Errorf("filesink: csv: record schema %s does not match writer schema %s", rec.Schema(), w.schema)
 	}
 
 	if w.writeHeader && !w.headerDone {
 		header := make([]string, w.schema.NumFields())
 		for i, field := range w.schema.Fields() {
-			header[i] = field.Name
+			name := field.Name
+			if w.escapeFormulas {
+				name = escapeFormula(name)
+			}
+			header[i] = name
 		}
 		if err := w.w.Write(header); err != nil {
 			return fmt.Errorf("write header: %w", err)
@@ -226,6 +232,26 @@ func (w *csvRecordWriter) Write(rec arrow.Record) error {
 func (w *csvRecordWriter) Close() error {
 	w.w.Flush()
 	return w.w.Error()
+}
+
+// csvSchemaCompatible reports whether a and b have the same number of
+// fields, with each pair sharing a name and type. CSV serialization renders
+// a field using only its name (for the header) and type (to pick a
+// formatter), so this deliberately ignores nullability and field metadata —
+// a batch whose schema differs from the writer's only in those respects
+// (e.g. a projected or joined batch) renders identical CSV output and
+// should not be rejected.
+func csvSchemaCompatible(a, b *arrow.Schema) bool {
+	if a.NumFields() != b.NumFields() {
+		return false
+	}
+	for i, fa := range a.Fields() {
+		fb := b.Field(i)
+		if fa.Name != fb.Name || !arrow.TypeEqual(fa.Type, fb.Type) {
+			return false
+		}
+	}
+	return true
 }
 
 // formatter renders one non-null value from column arr at row i as CSV

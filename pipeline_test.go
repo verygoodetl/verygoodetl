@@ -120,3 +120,89 @@ func TestProcessorErrorCancelsPipelineAndSkipsFinish(t *testing.T) {
 		t.Fatal("Finish called after Process returned an error")
 	}
 }
+
+// abortableSink records whether the runtime called Abort on it, to verify
+// the runtime invokes Aborter in place of a skipped Finish.
+type abortableSink struct {
+	consumed int
+	finished bool
+	aborted  bool
+}
+
+func (s *abortableSink) Consume(context.Context, Batch) error {
+	s.consumed++
+	return nil
+}
+
+func (s *abortableSink) Finish(context.Context) error {
+	s.finished = true
+	return nil
+}
+
+func (s *abortableSink) Abort() {
+	s.aborted = true
+}
+
+var _ Aborter = (*abortableSink)(nil)
+
+func TestRunTwiceReturnsErrorInsteadOfReusingClosedEdges(t *testing.T) {
+	p := New()
+	p.From(batchesSource{batches: []Batch{intBatch(t, 1)}}).To(SinkFuncs{})
+
+	if err := p.Run(context.Background()); err != nil {
+		t.Fatalf("first Run: %v", err)
+	}
+	if err := p.Run(context.Background()); err == nil {
+		t.Fatal("want error running an already-run pipeline a second time, got nil")
+	}
+}
+
+func TestGraphMutationAfterRunPanics(t *testing.T) {
+	p := New()
+	p.From(batchesSource{batches: []Batch{intBatch(t, 1)}}).To(SinkFuncs{})
+
+	if err := p.Run(context.Background()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	defer func() {
+		if recover() == nil {
+			t.Fatal("want From to panic once the pipeline has been run")
+		}
+	}()
+	p.From(batchesSource{})
+}
+
+func TestUpstreamFailureCallsAbortOnDownstreamSink(t *testing.T) {
+	want := errors.New("upstream boom")
+	p := New()
+	sink := &abortableSink{}
+	p.From(errorSource{err: want}).To(sink)
+
+	err := p.Run(context.Background())
+	if !errors.Is(err, want) {
+		t.Fatalf("Run error=%v, want %v", err, want)
+	}
+	if sink.finished {
+		t.Fatal("Finish called after upstream failure")
+	}
+	if !sink.aborted {
+		t.Fatal("want Abort called after upstream failure skipped Finish")
+	}
+}
+
+func TestSuccessfulRunDoesNotCallAbort(t *testing.T) {
+	p := New()
+	sink := &abortableSink{}
+	p.From(batchesSource{batches: []Batch{intBatch(t, 1)}}).To(sink)
+
+	if err := p.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !sink.finished {
+		t.Fatal("want Finish called on successful run")
+	}
+	if sink.aborted {
+		t.Fatal("Abort called after a successful run")
+	}
+}

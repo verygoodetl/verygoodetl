@@ -71,6 +71,27 @@ func TestContextCancellationCancelsGraphAndSkipsFinish(t *testing.T) {
 	}
 }
 
+func TestCompletedWorkIsNotReportedAsCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	// A source with no downstream stage never touches ctx internally (its
+	// Output.Send loop is a no-op with zero edges — see etl.go), so its Run
+	// reliably returns nil here regardless of ctx's state. That isolates
+	// the invariant under test: Run reports success whenever every stage's
+	// own Run/Process/Finish returns nil, regardless of whether the caller
+	// separately canceled ctx. A stage that actually depends on ctx to do
+	// its work (e.g. cancelSource above) still reports its own error when
+	// canceled, and that error — not the mere fact that ctx was canceled —
+	// is what Run returns; see TestContextCancellationCancelsGraphAndSkipsFinish.
+	p := New()
+	p.From(batchesSource{batches: []Batch{intBatch(t, 1)}})
+
+	if err := p.Run(ctx); err != nil {
+		t.Fatalf("Run error=%v, want nil: no stage reported an error, so the work isn't \"canceled\" even though ctx was", err)
+	}
+}
+
 func TestCopyToPreservesStream(t *testing.T) {
 	p := New()
 	stream := p.From(batchesSource{batches: []Batch{intBatch(t, 1, 2)}})

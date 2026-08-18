@@ -87,6 +87,16 @@ type Sink interface {
 	Finish(context.Context) error
 }
 
+// Aborter is optionally implemented by a Processor or Sink that holds
+// resources needing best-effort cleanup when a pipeline fails or is
+// canceled before that stage's Finish is reached — for example, canceling
+// an in-flight blob upload rather than leaking it. The runtime calls Abort
+// at most once for a given stage, and only when Finish will never be
+// called for it.
+type Aborter interface {
+	Abort()
+}
+
 // SinkFuncs makes small sinks easy to define.
 type SinkFuncs struct {
 	ConsumeFunc func(context.Context, Batch) error

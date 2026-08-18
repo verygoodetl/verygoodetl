@@ -25,9 +25,11 @@ type Sink struct {
 	bw      *blob.Writer
 	rw      RecordWriter
 	cancel  context.CancelFunc
+	aborted bool
 }
 
 var _ etl.Sink = (*Sink)(nil)
+var _ etl.Aborter = (*Sink)(nil)
 
 // SinkOption configures a Sink.
 type SinkOption func(*Sink)
@@ -150,12 +152,26 @@ func (s *Sink) writerOptions() *blob.WriterOptions {
 // abort cancels the in-flight write and releases the blob writer without
 // committing the object. Best-effort: gocloud documents this cancel-then-
 // Close pattern but does not guarantee identical atomicity across every
-// backend.
+// backend. A no-op past the first call, so it's safe to reach both from a
+// Consume/Finish error path and from Abort.
 func (s *Sink) abort() {
+	if s.aborted {
+		return
+	}
+	s.aborted = true
 	if s.cancel != nil {
 		s.cancel()
 	}
 	if s.bw != nil {
 		_ = s.bw.Close()
 	}
+}
+
+// Abort implements etl.Aborter. The pipeline runtime calls it when this
+// Sink's Finish will never run because of an upstream failure or
+// cancellation, so a writer opened by an earlier Consume isn't left
+// dangling — e.g. an in-flight blob upload that would otherwise never be
+// canceled or closed.
+func (s *Sink) Abort() {
+	s.abort()
 }

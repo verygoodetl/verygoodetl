@@ -45,6 +45,8 @@ The initial runtime favors predictable bounded memory over unbounded queues.
 
 The first stage error cancels the pipeline. External context cancellation does the same. Stages should respect their supplied context.
 
+`Run` always waits for every stage to finish unwinding, then reports whatever error a stage itself returned — never the bare fact that ctx was canceled. A stage that respects its context reports its own error once canceled (typically `ctx.Err()`), and that becomes `Run`'s result. But if every stage completes without an error, `Run` returns `nil` even when ctx was also canceled: the pipeline's work finished before the cancellation could have had any effect on it, so nothing was actually canceled.
+
 On cancellation, unread retained batches are drained and released so failed pipelines do not leak Arrow references.
 
 ## Raw archival and replay

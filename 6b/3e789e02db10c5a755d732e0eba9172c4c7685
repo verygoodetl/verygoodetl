@@ -1,0 +1,46 @@
+sqlsource/source_test.go
+  s_20acc379ab977d::t_94f69d0ec700c1 25
+  s_20acc379ab977d::t_058e661a998027 24,26-40
+  s_20acc379ab977d::t_0bbf665d28ca9b 95
+sqlsource/lookup_keys_test.go
+  s_20acc379ab977d::t_489f11efdd535a 1-72
+examples/sql-lookup-merge/main.go
+  s_20acc379ab977d::t_613613b0061ff5 1-184,186,193-235
+  s_20acc379ab977d::t_d578eb264f3cf4 185,187-192
+sqlsource/scan.go
+  s_20acc379ab977d::t_01b77cdd1ddcf8 1-81
+sqlsource/lookup_test.go
+  s_20acc379ab977d::t_c370838ce9bda9 1-12,15-18,47-94,96-147,149-161,204-223,225-244,248-254,256-277
+  s_20acc379ab977d::t_83aa3f073543ae 162-203
+  s_20acc379ab977d::t_5990b9ccbf1424 95,148,224,255
+  s_20acc379ab977d::t_55f36e988e8505 245-247
+  s_20acc379ab977d::t_73b790192c5bd6 13-14,19-46
+sqlsource/lookup.go
+  s_20acc379ab977d::t_a2ab909de7f800 1-18,25-34,38-112,120-134
+  s_20acc379ab977d::t_6a400c22ba4949 19-24,35-37
+  s_20acc379ab977d::t_72b0e3f67b12d5 113-119
+README.md
+  s_20acc379ab977d::t_c9ffd8bfea2694 131-132,135-136,142-149
+  s_20acc379ab977d::t_3d29214ac9adef 133-134,137-141
+  s_20acc379ab977d::t_578ba0369ee426 157
+sqlsource/source.go
+  s_20acc379ab977d::t_52fe882a87372f 100-102
+sqlsource/lookup_keys.go
+  s_20acc379ab977d::t_5974037b224450 1-67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "6b3e789e02db10c5a755d732e0eba9172c4c7685",
+  "prompts": {},
+  "sessions": {
+    "s_20acc379ab977d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3e07e893-587b-4080-a606-44201910a3c3",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    }
+  }
+}

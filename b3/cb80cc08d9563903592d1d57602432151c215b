@@ -1,0 +1,39 @@
+filesink/csv_test.go
+  s_81fe8b1ce3945d::t_067178663fdf45 460-634
+  s_81fe8b1ce3945d::t_1fdb5ed98f5c29 6
+  s_81fe8b1ce3945d::t_8885b683d3cd91 635-777
+  s_ec96f804440015::t_e5520ca39eeccd 778
+filesink/csv.go
+  s_81fe8b1ce3945d::t_56837a37537b20 219,222-225
+  s_81fe8b1ce3945d::t_982c361b15b1eb 72-127
+  s_81fe8b1ce3945d::t_09cb085fb046d6 8
+  s_81fe8b1ce3945d::t_1de202cb0d3b0d 153-154
+  s_81fe8b1ce3945d::t_92144d9a599a2a 186-189
+  s_81fe8b1ce3945d::t_327551065fa422 22
+  s_81fe8b1ce3945d::t_3e9760b27c98ea 130-135
+  s_ec96f804440015::t_5f194cbf0c2139 155
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "b3cb80cc08d9563903592d1d57602432151c215b",
+  "prompts": {},
+  "sessions": {
+    "s_81fe8b1ce3945d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9e0bfd2b-fa71-4049-8bf6-851039a360e7",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    },
+    "s_ec96f804440015": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ee17cd3-58bb-4593-ad7c-7fc3c2da41d8",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    }
+  }
+}

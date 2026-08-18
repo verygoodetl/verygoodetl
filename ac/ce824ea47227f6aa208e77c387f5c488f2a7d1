@@ -1,0 +1,14 @@
+.gitignore
+  h_7f1b1bca3a6a92 47-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "acce824ea47227f6aa208e77c387f5c488f2a7d1",
+  "prompts": {},
+  "humans": {
+    "h_7f1b1bca3a6a92": {
+      "author": "Chris Sturgill <chris@thesturgills.com>"
+    }
+  }
+}

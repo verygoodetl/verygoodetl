@@ -1,0 +1,21 @@
+.github/workflows/ci.yml
+  s_81fe8b1ce3945d::t_9a4cf7f9e13934 15,18
+.github/dependabot.yml
+  s_81fe8b1ce3945d::t_1086f07e78b7ee 1-6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "215d00ab280f5542ce899289589c6920ce500821",
+  "prompts": {},
+  "sessions": {
+    "s_81fe8b1ce3945d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9e0bfd2b-fa71-4049-8bf6-851039a360e7",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    }
+  }
+}

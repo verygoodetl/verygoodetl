@@ -44,3 +44,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Local test / temp files
+tmp/

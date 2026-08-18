@@ -122,9 +122,10 @@ func (r *fakeRows) Next(dest []driver.Value) error {
 // --- test helpers ---
 
 type countingSink struct {
-	mu      sync.Mutex
-	batches []int64
-	rows    [][]any
+	mu       sync.Mutex
+	batches  []int64
+	rows     [][]any
+	rowTypes [][]arrow.DataType
 }
 
 func (s *countingSink) Consume(_ context.Context, b etl.Batch) error {
@@ -134,8 +135,10 @@ func (s *countingSink) Consume(_ context.Context, b etl.Batch) error {
 	rec := b.Record()
 	for r := 0; r < int(rec.NumRows()); r++ {
 		row := make([]any, rec.NumCols())
+		rowType := make([]arrow.DataType, rec.NumCols())
 		for c := 0; c < int(rec.NumCols()); c++ {
 			col := rec.Column(c)
+			rowType[c] = col.DataType()
 			if col.IsNull(r) {
 				row[c] = nil
 				continue
@@ -143,6 +146,7 @@ func (s *countingSink) Consume(_ context.Context, b etl.Batch) error {
 			row[c] = columnValue(col, r)
 		}
 		s.rows = append(s.rows, row)
+		s.rowTypes = append(s.rowTypes, rowType)
 	}
 	return nil
 }
@@ -294,6 +298,53 @@ func TestSourcePermissiveConversionFromBytes(t *testing.T) {
 	}
 }
 
+func TestSourceNilDBAndSchema(t *testing.T) {
+	schema := int64Schema("id")
+	db, err := sql.Open("sqlsourcefake", "unused")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	if _, err := sqlsource.New(nil, "SELECT id FROM t", schema); err == nil {
+		t.Fatal("want error constructing Source with a nil db")
+	}
+	if _, err := sqlsource.New(db, "SELECT id FROM t", nil); err == nil {
+		t.Fatal("want error constructing Source with a nil schema")
+	}
+}
+
+// TestSourceWithArgsCopiesSlice is a regression test: WithArgs used to keep
+// a reference to the caller's backing slice, so mutating it after
+// construction (or reusing it concurrently) could change the args the next
+// query runs with.
+func TestSourceWithArgsCopiesSlice(t *testing.T) {
+	schema := int64Schema("id")
+	dsn := registerFixture(t, &fixture{
+		columns: []string{"id"},
+		rows:    [][]driver.Value{{int64(1)}},
+	})
+	db, err := sql.Open("sqlsourcefake", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	args := []any{int64(1)}
+	src, err := sqlsource.New(db, "SELECT id FROM t WHERE id = ?", schema, sqlsource.WithArgs(args...))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	args[0] = int64(999) // mutate the caller's slice after construction
+	runSource(t, src)
+
+	_, gotArgs := lookupFixture(dsn).lastCall()
+	if len(gotArgs) != 1 || gotArgs[0].Value != int64(1) {
+		t.Fatalf("query args=%v, want [1] (mutating the caller's slice after New must not affect the stored args)", gotArgs)
+	}
+}
+
 func TestSourceUnsupportedSchemaType(t *testing.T) {
 	schema := arrow.NewSchema([]arrow.Field{
 		{Name: "id", Type: arrow.ListOf(arrow.PrimitiveTypes.Int64)},
@@ -425,6 +476,60 @@ func TestSourceTimestampWithTimeZone(t *testing.T) {
 	}
 	if got != wantTS {
 		t.Fatalf("created_at = %v, want %v", got, wantTS)
+	}
+
+	wantType := schema.Field(1).Type
+	if gotType := sink.rowTypes[0][1]; !arrow.TypeEqual(gotType, wantType) {
+		t.Fatalf("created_at column type = %v, want %v (TimeZone must round-trip too)", gotType, wantType)
+	}
+}
+
+// TestSourceTimestampFromTextDriverValue is a regression test: some
+// database/sql drivers scan TIMESTAMP columns as []byte or string rather
+// than time.Time (e.g. modernc.org/sqlite for certain column affinities),
+// so timestampConverter.append must parse text the same way its sibling
+// converters (int64Converter, float64Converter, ...) already do, instead of
+// erroring and stopping batch emission.
+func TestSourceTimestampFromTextDriverValue(t *testing.T) {
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "id", Type: arrow.PrimitiveTypes.Int64},
+		{Name: "created_at", Type: &arrow.TimestampType{Unit: arrow.Microsecond}},
+	}, nil)
+
+	want, err := arrow.TimestampFromString("2026-07-15 12:30:00", arrow.Microsecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dsn := registerFixture(t, &fixture{
+		columns: []string{"id", "created_at"},
+		rows: [][]driver.Value{
+			{int64(1), []byte("2026-07-15 12:30:00")},
+			{int64(2), "2026-07-15 12:30:00"},
+		},
+	})
+	db, err := sql.Open("sqlsourcefake", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	src, err := sqlsource.New(db, "SELECT id, created_at FROM t", schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sink := runSource(t, src)
+
+	if len(sink.rows) != 2 {
+		t.Fatalf("rows=%v, want 2 rows", sink.rows)
+	}
+	for i, row := range sink.rows {
+		got, ok := row[1].(arrow.Timestamp)
+		if !ok {
+			t.Fatalf("row %d: created_at = %#v (%T), want arrow.Timestamp", i, row[1], row[1])
+		}
+		if got != want {
+			t.Fatalf("row %d: created_at = %v, want %v", i, got, want)
+		}
 	}
 }
 

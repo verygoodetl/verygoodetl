@@ -117,8 +117,22 @@ func (w *csvWriter) Write(record []string) error {
 		if err := w.w.WriteByte('"'); err != nil {
 			return err
 		}
+		esc := w.EscapeCharacter
 		for len(field) > 0 {
 			i := strings.IndexAny(field, "\"\r\n")
+			// When a non-default EscapeCharacter is set, a literal
+			// occurrence of it inside the field is just as ambiguous to an
+			// escape-based reader as an unescaped quote: it must be escaped
+			// too, or the reader can't tell it apart from an
+			// escape-introducer byte. Treat the earliest occurrence of
+			// either as the next thing to handle.
+			escAt := -1
+			if esc != "" {
+				escAt = strings.Index(field, esc)
+				if escAt >= 0 && (i < 0 || escAt < i) {
+					i = escAt
+				}
+			}
 			if i < 0 {
 				i = len(field)
 			}
@@ -129,6 +143,14 @@ func (w *csvWriter) Write(record []string) error {
 			field = field[i:]
 
 			if len(field) > 0 {
+				if esc != "" && escAt == i && strings.HasPrefix(field, esc) {
+					if _, err := w.w.WriteString(esc + esc); err != nil {
+						return err
+					}
+					field = field[len(esc):]
+					continue
+				}
+
 				var err error
 				switch field[0] {
 				case '"':

@@ -76,6 +76,16 @@ func WithLookupAllocator(mem memory.Allocator) LookupOption {
 // an error immediately for any other field type, rather than failing later
 // when a query runs.
 func NewLookup(db *sql.DB, generate QueryGenerator, schema *arrow.Schema, opts ...LookupOption) (*Lookup, error) {
+	if db == nil {
+		return nil, fmt.Errorf("sqlsource: NewLookup called with a nil db")
+	}
+	if generate == nil {
+		return nil, fmt.Errorf("sqlsource: NewLookup called with a nil generate")
+	}
+	if schema == nil {
+		return nil, fmt.Errorf("sqlsource: NewLookup called with a nil schema")
+	}
+
 	l := &Lookup{
 		db:        db,
 		generate:  generate,

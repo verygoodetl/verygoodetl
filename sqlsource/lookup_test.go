@@ -46,18 +46,15 @@ func int64Batch(t *testing.T, schema *arrow.Schema, values ...int64) etl.Batch {
 }
 
 // idsGenerator builds "SELECT id, status FROM shipments WHERE id IN (?,...)"
-// from the Int64 id column (column 0) of the incoming batch.
+// from the Int64 id column (column 0) of the incoming batch, using
+// sqlsource.LookupKeys rather than hand-rolling the extraction.
 func idsGenerator(b etl.Batch) (string, []any, error) {
-	ids := b.Record().Column(0)
-	idsCol, ok := ids.(interface{ Value(int) int64 })
-	if !ok {
-		return "", nil, fmt.Errorf("column 0 is not int64")
+	args, err := sqlsource.LookupKeys(b, 0)
+	if err != nil {
+		return "", nil, err
 	}
-	n := ids.Len()
-	args := make([]any, n)
-	placeholders := make([]string, n)
-	for i := 0; i < n; i++ {
-		args[i] = idsCol.Value(i)
+	placeholders := make([]string, len(args))
+	for i := range placeholders {
 		placeholders[i] = "?"
 	}
 	query := fmt.Sprintf("SELECT id, status FROM shipments WHERE id IN (%s)", strings.Join(placeholders, ","))
@@ -256,6 +253,26 @@ func TestLookupQueryError(t *testing.T) {
 		Process(lookup).To(&countingSink{})
 	if err := p.Run(context.Background()); err == nil {
 		t.Fatal("want error propagated from a failing query")
+	}
+}
+
+func TestLookupNilArguments(t *testing.T) {
+	resultSchema := arrow.NewSchema([]arrow.Field{{Name: "id", Type: arrow.PrimitiveTypes.Int64}}, nil)
+	db, err := sql.Open("sqlsourcefake", "unused")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	generate := func(b etl.Batch) (string, []any, error) { return "", nil, nil }
+
+	if _, err := sqlsource.NewLookup(nil, generate, resultSchema); err == nil {
+		t.Fatal("want error constructing Lookup with a nil db")
+	}
+	if _, err := sqlsource.NewLookup(db, nil, resultSchema); err == nil {
+		t.Fatal("want error constructing Lookup with a nil generate")
+	}
+	if _, err := sqlsource.NewLookup(db, generate, nil); err == nil {
+		t.Fatal("want error constructing Lookup with a nil schema")
 	}
 }
 

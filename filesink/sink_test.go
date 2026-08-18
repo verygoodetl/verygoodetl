@@ -10,9 +10,7 @@ import (
 	"testing"
 
 	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/ipc"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	"gocloud.dev/blob"
 	"gocloud.dev/blob/fileblob"
 	"gocloud.dev/blob/memblob"
@@ -36,14 +34,7 @@ func (s batchesSource) Run(ctx context.Context, out etl.Output) error {
 
 func batch(t *testing.T, schema *arrow.Schema, values ...int64) etl.Batch {
 	t.Helper()
-	b := array.NewInt64Builder(memory.DefaultAllocator)
-	defer b.Release()
-	b.AppendValues(values, nil)
-	a := b.NewArray()
-	defer a.Release()
-	rec := array.NewRecord(schema, []arrow.Array{a}, int64(len(values)))
-	t.Cleanup(rec.Release)
-	return etl.NewBatch(rec)
+	return etl.NewBatch(intRecord(t, schema, values...))
 }
 
 func TestSinkHappyPathParquet(t *testing.T) {
@@ -99,6 +90,18 @@ func TestSinkHappyPathArrowIPC(t *testing.T) {
 	defer reader.Close()
 	if !reader.Schema().Equal(schema) {
 		t.Fatalf("schema mismatch: got %v, want %v", reader.Schema(), schema)
+	}
+
+	var rows int64
+	for i := 0; i < reader.NumRecords(); i++ {
+		rec, err := reader.Record(i)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows += rec.NumRows()
+	}
+	if rows != 3 {
+		t.Fatalf("rows=%d, want 3", rows)
 	}
 }
 

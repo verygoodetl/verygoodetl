@@ -1,5 +1,3 @@
-// Package etl provides a batch-oriented dataflow runtime for building ETL
-// pipelines in Go.
 package etl
 
 import (

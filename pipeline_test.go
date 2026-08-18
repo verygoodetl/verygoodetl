@@ -191,6 +191,50 @@ func TestUpstreamFailureCallsAbortOnDownstreamSink(t *testing.T) {
 	}
 }
 
+func TestNilStagesReturnErrorInsteadOfPanicking(t *testing.T) {
+	t.Run("From", func(t *testing.T) {
+		p := New()
+		p.From(nil).To(SinkFuncs{})
+
+		err := p.Run(context.Background())
+		if err == nil {
+			t.Fatal("want error for nil Source, got nil")
+		}
+	})
+
+	t.Run("Process", func(t *testing.T) {
+		p := New()
+		p.From(batchesSource{batches: []Batch{intBatch(t, 1)}}).Process(nil).To(SinkFuncs{})
+
+		err := p.Run(context.Background())
+		if err == nil {
+			t.Fatal("want error for nil Processor, got nil")
+		}
+	})
+
+	t.Run("Merge", func(t *testing.T) {
+		p := New()
+		left := p.From(batchesSource{batches: []Batch{intBatch(t, 1)}})
+		right := p.From(batchesSource{batches: []Batch{intBatch(t, 2)}})
+		p.Merge(nil, left, right).To(SinkFuncs{})
+
+		err := p.Run(context.Background())
+		if err == nil {
+			t.Fatal("want error for nil Processor passed to Merge, got nil")
+		}
+	})
+
+	t.Run("To", func(t *testing.T) {
+		p := New()
+		p.From(batchesSource{batches: []Batch{intBatch(t, 1)}}).To(nil)
+
+		err := p.Run(context.Background())
+		if err == nil {
+			t.Fatal("want error for nil Sink, got nil")
+		}
+	})
+}
+
 func TestSuccessfulRunDoesNotCallAbort(t *testing.T) {
 	p := New()
 	sink := &abortableSink{}

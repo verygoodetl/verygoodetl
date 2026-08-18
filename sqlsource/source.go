@@ -37,7 +37,9 @@ type Option func(*Source)
 // WithArgs sets the query's parameter arguments, passed to
 // (*sql.DB).QueryContext.
 func WithArgs(args ...any) Option {
-	return func(s *Source) { s.args = args }
+	return func(s *Source) {
+		s.args = append([]any(nil), args...)
+	}
 }
 
 // WithBatchSize sets how many rows are grouped into each emitted batch.
@@ -65,6 +67,13 @@ func WithAllocator(mem memory.Allocator) Option {
 // immediately for any other field type, rather than failing later when the
 // query runs.
 func New(db *sql.DB, query string, schema *arrow.Schema, opts ...Option) (*Source, error) {
+	if db == nil {
+		return nil, fmt.Errorf("sqlsource: New called with a nil db")
+	}
+	if schema == nil {
+		return nil, fmt.Errorf("sqlsource: New called with a nil schema")
+	}
+
 	s := &Source{
 		db:        db,
 		query:     query,

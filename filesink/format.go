@@ -63,6 +63,9 @@ func WithCompression(codec compress.Compression) ParquetOption {
 func Parquet(opts ...ParquetOption) Format {
 	f := parquetFormat{compression: compress.Codecs.Snappy}
 	for _, opt := range opts {
+		if opt == nil {
+			continue
+		}
 		opt(&f)
 	}
 	return f
@@ -73,5 +76,8 @@ func (parquetFormat) ContentType() string { return "application/vnd.apache.parqu
 func (f parquetFormat) NewWriter(schema *arrow.Schema, w io.Writer) (RecordWriter, error) {
 	props := parquet.NewWriterProperties(parquet.WithCompression(f.compression))
 	arrProps := pqarrow.NewArrowWriterProperties(pqarrow.WithStoreSchema())
-	return pqarrow.NewFileWriter(schema, w, props, arrProps)
+	// pqarrow's FileWriter.Close closes w if it implements io.Closer (via
+	// parquet/file.Writer's sink). writeOnly hides Close so this method
+	// honors the Format.NewWriter contract that w is not closed.
+	return pqarrow.NewFileWriter(schema, writeOnly{w}, props, arrProps)
 }

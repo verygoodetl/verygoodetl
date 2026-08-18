@@ -34,7 +34,11 @@ func converterFor(dt arrow.DataType) (converter, error) {
 	case arrow.BINARY:
 		return binaryConverter{}, nil
 	case arrow.TIMESTAMP:
-		return timestampConverter{dt: dt.(*arrow.TimestampType)}, nil
+		ts, ok := dt.(*arrow.TimestampType)
+		if !ok {
+			return nil, fmt.Errorf("expected *arrow.TimestampType for %s, got %T", dt, dt)
+		}
+		return timestampConverter{dt: ts}, nil
 	default:
 		return nil, fmt.Errorf("unsupported type %s", dt)
 	}
@@ -206,6 +210,18 @@ func (c timestampConverter) append(b array.Builder, v any) error {
 		ts, err := arrow.TimestampFromTime(x, c.dt.Unit)
 		if err != nil {
 			return fmt.Errorf("convert time.Time to timestamp: %w", err)
+		}
+		bb.Append(ts)
+	case []byte:
+		ts, err := arrow.TimestampFromString(string(x), c.dt.Unit)
+		if err != nil {
+			return fmt.Errorf("parse timestamp from %q: %w", x, err)
+		}
+		bb.Append(ts)
+	case string:
+		ts, err := arrow.TimestampFromString(x, c.dt.Unit)
+		if err != nil {
+			return fmt.Errorf("parse timestamp from %q: %w", x, err)
 		}
 		bb.Append(ts)
 	default:

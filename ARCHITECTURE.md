@@ -18,10 +18,10 @@ The graph supports fan-out by connecting one stream to multiple downstream stage
 
 The lifecycle contract is deliberately strong:
 
-1. A stage receives zero or more batches.
+1. A `Processor` or `Sink` stage receives zero or more batches; a `Source` stage receives none and only produces them.
 2. All upstream edges close successfully.
 3. The stage's `Finish` method runs exactly once.
-4. The stage closes its downstream edges.
+4. The runtime closes the stage's downstream edges after it returns.
 
 If any stage fails, the pipeline context is canceled before that stage's downstream edges are closed. Downstream stages therefore must not interpret an upstream failure as a successful end-of-stream and run `Finish` on partial data.
 

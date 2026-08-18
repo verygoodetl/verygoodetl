@@ -29,9 +29,14 @@ import (
 // from both inputs through the same Process call with no input identity
 // (see ARCHITECTURE.md's "Future multi-input semantics"), so which side a
 // batch came from is determined here by its schema shape.
+// carriers and appData hold pending rows per id, on the label-api and
+// app-database sides respectively. A slice (not a single value) is needed
+// per id because either side may contain duplicate ids: each incoming row
+// either consumes one pending row from the opposite side (a match) or is
+// queued for a later match on its own side.
 type combiner struct {
-	carriers map[int64]string
-	appData  map[int64]appRow
+	carriers map[int64][]string
+	appData  map[int64][]appRow
 }
 
 type appRow struct {
@@ -40,7 +45,24 @@ type appRow struct {
 }
 
 func newCombiner() *combiner {
-	return &combiner{carriers: map[int64]string{}, appData: map[int64]appRow{}}
+	return &combiner{carriers: map[int64][]string{}, appData: map[int64][]appRow{}}
+}
+
+// popPending removes and returns the first pending row queued for id, along
+// with whether one was found.
+func popPending[T any](pending map[int64][]T, id int64) (T, bool) {
+	rows, ok := pending[id]
+	if !ok || len(rows) == 0 {
+		var zero T
+		return zero, false
+	}
+	row := rows[0]
+	if len(rows) == 1 {
+		delete(pending, id)
+	} else {
+		pending[id] = rows[1:]
+	}
+	return row, true
 }
 
 func hasField(schema *arrow.Schema, name string) bool {
@@ -68,12 +90,14 @@ func (c *combiner) Process(ctx context.Context, b etl.Batch, out etl.Output) err
 		ids := rec.Column(0).(*array.Int64)
 		carriers := rec.Column(1).(*array.String)
 		for i := 0; i < int(rec.NumRows()); i++ {
+			if ids.IsNull(i) {
+				continue
+			}
 			id, carrier := ids.Value(i), carriers.Value(i)
-			if app, ok := c.appData[id]; ok {
+			if app, ok := popPending(c.appData, id); ok {
 				matches = append(matches, match{id, carrier, app})
-				delete(c.appData, id)
 			} else {
-				c.carriers[id] = carrier
+				c.carriers[id] = append(c.carriers[id], carrier)
 			}
 		}
 	case hasField(schema, "status"):
@@ -81,13 +105,15 @@ func (c *combiner) Process(ctx context.Context, b etl.Batch, out etl.Output) err
 		statuses := rec.Column(1).(*array.String)
 		weights := rec.Column(2).(*array.Float64)
 		for i := 0; i < int(rec.NumRows()); i++ {
+			if ids.IsNull(i) {
+				continue
+			}
 			id := ids.Value(i)
 			app := appRow{status: statuses.Value(i), weight: weights.Value(i)}
-			if carrier, ok := c.carriers[id]; ok {
+			if carrier, ok := popPending(c.carriers, id); ok {
 				matches = append(matches, match{id, carrier, app})
-				delete(c.carriers, id)
 			} else {
-				c.appData[id] = app
+				c.appData[id] = append(c.appData[id], app)
 			}
 		}
 	default:
@@ -131,8 +157,15 @@ func (c *combiner) Process(ctx context.Context, b etl.Batch, out etl.Output) err
 }
 
 func (c *combiner) Finish(ctx context.Context, out etl.Output) error {
-	if len(c.carriers) > 0 || len(c.appData) > 0 {
-		fmt.Printf("unmatched: %d label-api rows, %d app rows\n", len(c.carriers), len(c.appData))
+	var unmatchedCarriers, unmatchedApp int
+	for _, rows := range c.carriers {
+		unmatchedCarriers += len(rows)
+	}
+	for _, rows := range c.appData {
+		unmatchedApp += len(rows)
+	}
+	if unmatchedCarriers > 0 || unmatchedApp > 0 {
+		fmt.Printf("unmatched: %d label-api rows, %d app rows\n", unmatchedCarriers, unmatchedApp)
 	}
 	return nil
 }

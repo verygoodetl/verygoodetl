@@ -44,6 +44,7 @@ type Pipeline struct {
 	nodes      []*node
 	bufferSize int
 	started    bool
+	err        error
 }
 
 // Option configures a Pipeline.
@@ -79,6 +80,9 @@ func (p *Pipeline) From(src Source) Stream {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.panicIfStartedLocked()
+	if src == nil {
+		p.setErrLocked(errors.New("etl: From called with a nil Source"))
+	}
 	n := &node{id: len(p.nodes), kind: sourceNode, source: src}
 	p.nodes = append(p.nodes, n)
 	return Stream{pipeline: p, node: n}
@@ -90,6 +94,9 @@ func (s Stream) Process(processor Processor) Stream {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.panicIfStartedLocked()
+	if processor == nil {
+		p.setErrLocked(errors.New("etl: Process called with a nil Processor"))
+	}
 	n := &node{id: len(p.nodes), kind: processorNode, processor: processor}
 	p.nodes = append(p.nodes, n)
 	p.connect(s.node, n)
@@ -102,6 +109,9 @@ func (p *Pipeline) Merge(processor Processor, inputs ...Stream) Stream {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.panicIfStartedLocked()
+	if processor == nil {
+		p.setErrLocked(errors.New("etl: Merge called with a nil Processor"))
+	}
 	n := &node{id: len(p.nodes), kind: processorNode, processor: processor}
 	p.nodes = append(p.nodes, n)
 	for _, input := range inputs {
@@ -119,9 +129,26 @@ func (s Stream) To(sink Sink) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.panicIfStartedLocked()
+	if sink == nil {
+		p.setErrLocked(errors.New("etl: To called with a nil Sink"))
+	}
 	n := &node{id: len(p.nodes), kind: sinkNode, sink: sink}
 	p.nodes = append(p.nodes, n)
 	p.connect(s.node, n)
+}
+
+// setErrLocked records the first builder-time validation error for p, such as
+// a nil stage passed to From, Process, Merge, or To. Callers must hold p.mu.
+// Only the first error is kept: a nil stage recorded early in the chain is
+// almost always the root cause, while later calls may themselves be built on
+// top of the already-invalid Stream and would just add noise. The error is
+// surfaced by Run instead of being returned directly from the builder methods
+// so that graph construction can keep using its fluent, chained style without
+// every call needing to check for an error before proceeding.
+func (p *Pipeline) setErrLocked(err error) {
+	if p.err == nil {
+		p.err = err
+	}
 }
 
 // panicIfStartedLocked panics if Run has already been called on p. Callers
@@ -150,7 +177,9 @@ func (p *Pipeline) connect(from, to *node) {
 	to.incoming = append(to.incoming, e)
 }
 
-// Run executes the graph until every stage completes. Run always waits for
+// Run executes the graph until every stage completes. If a builder call such
+// as From, Process, Merge, or To was given a nil stage, Run returns that
+// error immediately without starting any stage. Run always waits for
 // every stage to finish unwinding, even after a failure or a canceled ctx,
 // since stages are cooperative: only a stage's own returned error is ever
 // reported, not the mere fact that ctx was canceled. In practice this
@@ -172,6 +201,10 @@ func (p *Pipeline) Run(ctx context.Context) error {
 	if p.started {
 		p.mu.Unlock()
 		return errors.New("etl: pipeline already run; a Pipeline may be run at most once")
+	}
+	if p.err != nil {
+		p.mu.Unlock()
+		return p.err
 	}
 	p.started = true
 	nodes := append([]*node(nil), p.nodes...)

@@ -250,6 +250,81 @@ func TestCSVWithEscapeCharacter(t *testing.T) {
 	// documented tradeoff of using this option, not asserted here.
 }
 
+// TestCSVWithEscapeCharacterEscapesLiteralEscapeByte covers a case the
+// escape-character path previously got wrong: a field containing a literal
+// occurrence of the configured EscapeCharacter, immediately followed by a
+// quote character. Without also escaping the literal escape byte itself, an
+// escape-based reader can't tell that byte apart from an escape-introducer,
+// and misparses the quote that follows (and potentially the rest of the
+// record, since the reader believes it's still inside the quoted field).
+func TestCSVWithEscapeCharacterEscapesLiteralEscapeByte(t *testing.T) {
+	schema := arrow.NewSchema([]arrow.Field{{Name: "value", Type: arrow.BinaryTypes.String}}, nil)
+
+	b := array.NewStringBuilder(memory.DefaultAllocator)
+	defer b.Release()
+	// Contains a literal backslash (the escape character) immediately
+	// followed by a quote — the classic backslash-escaping ambiguity.
+	tricky := `x\"y`
+	b.Append(tricky)
+	arr := b.NewArray()
+	defer arr.Release()
+	rec := array.NewRecord(schema, []arrow.Array{arr}, 1)
+	defer rec.Release()
+
+	var buf bytes.Buffer
+	w, err := filesink.CSV(filesink.WithEscapeCharacter(`\`)).NewWriter(schema, &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Write(rec); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	raw := buf.String()
+	want := "value\n\"x\\\\\\\"y\"\n" // header, then "x\\\"y" quoted: \\  (escaped backslash) + \" (escaped quote)
+	if raw != want {
+		t.Fatalf("raw output=%q, want %q", raw, want)
+	}
+
+	// Decode by hand using the same backslash-escaping convention the
+	// writer was configured with, to confirm the output round-trips
+	// unambiguously (a standard csv.Reader doesn't understand backslash
+	// escaping, so it can't be used here).
+	got := decodeBackslashEscapedField(t, raw)
+	if got != tricky {
+		t.Fatalf("decoded value=%q, want %q", got, tricky)
+	}
+}
+
+// decodeBackslashEscapedField extracts and unescapes the single quoted data
+// field from a two-line (header + one row) CSV blob written with
+// EscapeCharacter set to a backslash, treating \\ and \" as the only
+// recognized escape sequences.
+func decodeBackslashEscapedField(t *testing.T, raw string) string {
+	t.Helper()
+	lines := strings.Split(strings.TrimSuffix(raw, "\n"), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("raw=%q, want exactly 2 lines", raw)
+	}
+	dataLine := lines[1]
+	if len(dataLine) < 2 || dataLine[0] != '"' || dataLine[len(dataLine)-1] != '"' {
+		t.Fatalf("data line=%q, want a single quoted field", dataLine)
+	}
+	inner := dataLine[1 : len(dataLine)-1]
+
+	var out strings.Builder
+	for i := 0; i < len(inner); i++ {
+		if inner[i] == '\\' && i+1 < len(inner) {
+			i++
+		}
+		out.WriteByte(inner[i])
+	}
+	return out.String()
+}
+
 func TestCSVWithAlwaysEncapsulate(t *testing.T) {
 	schema := arrow.NewSchema([]arrow.Field{{Name: "id", Type: arrow.PrimitiveTypes.Int64}}, nil)
 

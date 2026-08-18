@@ -97,6 +97,9 @@ import (
 )
 
 bucket, err := blob.OpenBucket(ctx, "s3://my-bucket?region=us-west-2")
+if err != nil {
+    return err
+}
 
 orders.CopyTo(filesink.New(bucket, "orders.parquet", filesink.Parquet()))
 ```
@@ -122,8 +125,14 @@ import (
 )
 
 db, err := sql.Open("sqlite", "file:orders.db")
+if err != nil {
+    return err
+}
 
 source, err := sqlsource.New(db, "SELECT id, name FROM orders", schema)
+if err != nil {
+    return err
+}
 
 orders := pipeline.From(source)
 ```
@@ -142,6 +151,9 @@ generate := func(b etl.Batch) (string, []any, error) {
     return query, args, nil
 }
 lookup, err := sqlsource.NewLookup(secondDB, generate, resultSchema)
+if err != nil {
+    return err
+}
 
 matches := orders.Process(lookup)
 combined := pipeline.Merge(combiner, orders, matches)

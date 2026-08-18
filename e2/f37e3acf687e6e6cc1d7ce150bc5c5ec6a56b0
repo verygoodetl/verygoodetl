@@ -1,0 +1,24 @@
+sqlsource/source_test.go
+  s_aa036fe16b0d6e::t_ef565562ba267e 154-155
+  s_aa036fe16b0d6e::t_15fa0eb05e02bb 385-430
+  s_aa036fe16b0d6e::t_1b5f62f5712c84 11
+sqlsource/types.go
+  s_aa036fe16b0d6e::t_5877426ed3de03 37
+  s_aa036fe16b0d6e::t_87f8227ebb5dc4 186-191,193,197,206
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "e2f37e3acf687e6e6cc1d7ce150bc5c5ec6a56b0",
+  "prompts": {},
+  "sessions": {
+    "s_aa036fe16b0d6e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "77487253-4df4-4d33-a239-2d0b31fc8db7",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    }
+  }
+}

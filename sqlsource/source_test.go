@@ -8,6 +8,7 @@ import (
 	"io"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 
@@ -150,6 +151,8 @@ func (s *countingSink) Finish(context.Context) error { return nil }
 
 func columnValue(col arrow.Array, i int) any {
 	switch a := col.(type) {
+	case interface{ Value(int) arrow.Timestamp }:
+		return a.Value(i)
 	case interface{ Value(int) int64 }:
 		return a.Value(i)
 	case interface{ Value(int) string }:
@@ -376,6 +379,52 @@ func TestSourceExactBatchBoundary(t *testing.T) {
 
 	if got, want := sink.batches, []int64{2, 2}; !equalInt64s(got, want) {
 		t.Fatalf("batches=%v, want %v (no trailing empty batch)", got, want)
+	}
+}
+
+// TestSourceTimestampWithTimeZone is a regression test: array.NewRecord
+// checks a column's Arrow type against its schema field for equality
+// (including TimeZone), so a schema field like this one used to panic at
+// record-construction time — the builder timestampConverter.newBuilder
+// created only carried over Unit, silently dropping TimeZone.
+func TestSourceTimestampWithTimeZone(t *testing.T) {
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "id", Type: arrow.PrimitiveTypes.Int64},
+		{Name: "created_at", Type: &arrow.TimestampType{Unit: arrow.Microsecond, TimeZone: "UTC"}},
+	}, nil)
+
+	want := time.Date(2026, 7, 15, 12, 30, 0, 0, time.UTC)
+	dsn := registerFixture(t, &fixture{
+		columns: []string{"id", "created_at"},
+		rows: [][]driver.Value{
+			{int64(1), want},
+		},
+	})
+	db, err := sql.Open("sqlsourcefake", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	src, err := sqlsource.New(db, "SELECT id, created_at FROM t", schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sink := runSource(t, src)
+
+	if len(sink.rows) != 1 {
+		t.Fatalf("rows=%v, want 1 row", sink.rows)
+	}
+	got, ok := sink.rows[0][1].(arrow.Timestamp)
+	if !ok {
+		t.Fatalf("created_at = %#v (%T), want arrow.Timestamp", sink.rows[0][1], sink.rows[0][1])
+	}
+	wantTS, err := arrow.TimestampFromTime(want, arrow.Microsecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != wantTS {
+		t.Fatalf("created_at = %v, want %v", got, wantTS)
 	}
 }
 

@@ -34,7 +34,7 @@ func converterFor(dt arrow.DataType) (converter, error) {
 	case arrow.BINARY:
 		return binaryConverter{}, nil
 	case arrow.TIMESTAMP:
-		return timestampConverter{unit: dt.(*arrow.TimestampType).Unit}, nil
+		return timestampConverter{dt: dt.(*arrow.TimestampType)}, nil
 	default:
 		return nil, fmt.Errorf("unsupported type %s", dt)
 	}
@@ -183,12 +183,18 @@ func (binaryConverter) append(b array.Builder, v any) error {
 	return nil
 }
 
+// timestampConverter carries the full schema-declared TimestampType, not
+// just its Unit, so the builder it constructs has exactly the type the
+// caller's schema declared (e.g. a non-empty TimeZone). array.NewRecord
+// checks each column's type against the schema field's type for equality,
+// so any dropped attribute here would panic at record-construction time
+// for any schema that declares one.
 type timestampConverter struct {
-	unit arrow.TimeUnit
+	dt *arrow.TimestampType
 }
 
 func (c timestampConverter) newBuilder(mem memory.Allocator) array.Builder {
-	return array.NewTimestampBuilder(mem, &arrow.TimestampType{Unit: c.unit})
+	return array.NewTimestampBuilder(mem, c.dt)
 }
 
 func (c timestampConverter) append(b array.Builder, v any) error {
@@ -197,7 +203,7 @@ func (c timestampConverter) append(b array.Builder, v any) error {
 	case nil:
 		bb.AppendNull()
 	case time.Time:
-		ts, err := arrow.TimestampFromTime(x, c.unit)
+		ts, err := arrow.TimestampFromTime(x, c.dt.Unit)
 		if err != nil {
 			return fmt.Errorf("convert time.Time to timestamp: %w", err)
 		}

@@ -21,6 +21,23 @@ type fixture struct {
 	columns  []string
 	rows     [][]driver.Value
 	queryErr error
+
+	mu        sync.Mutex
+	lastQuery string
+	lastArgs  []driver.NamedValue
+}
+
+func (f *fixture) recordQuery(query string, args []driver.NamedValue) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.lastQuery = query
+	f.lastArgs = args
+}
+
+func (f *fixture) lastCall() (string, []driver.NamedValue) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.lastQuery, f.lastArgs
 }
 
 var (
@@ -75,6 +92,7 @@ func (c *fakeConn) Begin() (driver.Tx, error) {
 }
 
 func (c *fakeConn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+	c.fixture.recordQuery(query, args)
 	if c.fixture.queryErr != nil {
 		return nil, c.fixture.queryErr
 	}

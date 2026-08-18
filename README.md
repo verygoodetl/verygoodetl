@@ -128,6 +128,25 @@ source, err := sqlsource.New(db, "SELECT id, name FROM orders", schema)
 orders := pipeline.From(source)
 ```
 
+`sqlsource.Lookup` runs a dynamically generated query per incoming batch against a (possibly different) database — for example, using a batch of IDs from one database to look up matching rows in a second, unconnected database that can't be joined with a single SQL statement. `Lookup` replaces the stream with its own results rather than merging them; to combine the original batch with a `Lookup`'s results, attach both to a `Pipeline.Merge` and do the combination there — see `examples/sql-lookup-merge`.
+
+`sqlsource.LookupKeys(batch, column)` extracts a column's non-null, de-duplicated values from a batch — the args for an `IN (...)` clause — so a `QueryGenerator` doesn't need to hand-roll that extraction loop itself:
+
+```go
+generate := func(b etl.Batch) (string, []any, error) {
+    args, err := sqlsource.LookupKeys(b, 0)
+    if err != nil {
+        return "", nil, err
+    }
+    // ...build "WHERE id IN (?, ?, ...)" with len(args) placeholders...
+    return query, args, nil
+}
+lookup, err := sqlsource.NewLookup(secondDB, generate, resultSchema)
+
+matches := orders.Process(lookup)
+combined := pipeline.Merge(combiner, orders, matches)
+```
+
 ## Examples
 
 The `examples` directory has complete, runnable programs (`go run ./examples/<name>`) for common pipeline shapes:
@@ -135,6 +154,7 @@ The `examples` directory has complete, runnable programs (`go run ./examples/<na
 - `archive-fanout` — a source fanning out to both a durable archive (`filesink` with `IfNotExist` opted in) and a processed sink.
 - `sql-to-sink` — a SQL source with no archival step.
 - `sql-to-archive` — extract from SQL, archive the raw batches, and process the same stream into a reporting sink.
+- `sql-lookup-merge` — query two unconnected databases and combine the results in Go via `sqlsource.Lookup` and `Pipeline.Merge`.
 
 ## Batch ownership
 

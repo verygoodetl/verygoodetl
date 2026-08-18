@@ -1,0 +1,45 @@
+pipeline.go
+  s_81fe8b1ce3945d::t_7cbd2b728bffcb 39-41,46
+  s_81fe8b1ce3945d::t_a4b06e62b1892f 81,92,104,121,127-136
+  s_81fe8b1ce3945d::t_2fa1314b20efcb 153-164,184-185,197,216,221-222
+  s_81fe8b1ce3945d::t_ca154a2f142b44 165-169,172-176
+  s_81fe8b1ce3945d::t_894985c9d19533 137,263-273
+  s_81fe8b1ce3945d::t_d8a18e80997dd4 237,241,250,254
+  s_ec96f804440015::t_a4ab9d09564e60 138
+ARCHITECTURE.md
+  s_81fe8b1ce3945d::t_92612aa92357fb 48-49
+pipeline_test.go
+  s_81fe8b1ce3945d::t_a8ee8ad182c79d 123-208
+lifecycle_test.go
+  s_81fe8b1ce3945d::t_d43fd6ba4b6382 74-94
+filesink/sink.go
+  s_81fe8b1ce3945d::t_8c417c6a0c8246 28,32
+  s_81fe8b1ce3945d::t_a73368bd92d7cd 155-156,158-161,169-176
+  s_ec96f804440015::t_f15f199377e45e 177
+etl.go
+  s_81fe8b1ce3945d::t_9745392d33f17f 90-99
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "6eecc13ddc78a368c609f3d9f4002023fd12cbf6",
+  "prompts": {},
+  "sessions": {
+    "s_81fe8b1ce3945d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9e0bfd2b-fa71-4049-8bf6-851039a360e7",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    },
+    "s_ec96f804440015": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ee17cd3-58bb-4593-ad7c-7fc3c2da41d8",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    }
+  }
+}

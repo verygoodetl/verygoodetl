@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -18,6 +19,7 @@ type csvFormat struct {
 	nullString        string
 	escapeCharacter   string
 	alwaysEncapsulate bool
+	escapeFormulas    bool
 }
 
 // CSVOption configures the CSV format.
@@ -67,11 +69,70 @@ func WithAlwaysEncapsulate(always bool) CSVOption {
 	return func(f *csvFormat) { f.alwaysEncapsulate = always }
 }
 
+// WithEscapeFormulas prefixes a string or binary (base64) field's rendered
+// text with a leading apostrophe whenever it starts with a character many
+// spreadsheet applications (Excel, LibreOffice, Google Sheets) treat as the
+// start of a formula on import — '=', '+', '-', '@', a tab, or a carriage
+// return. This is a real risk whenever a CSV file containing untrusted or
+// user-supplied text might be opened directly in spreadsheet software: this
+// package's own RFC 4180 quoting only controls how a CSV *parser* reads a
+// field, and does nothing to stop a spreadsheet application from then
+// interpreting well-formed, correctly-quoted cell text as a formula once
+// it's loaded.
+//
+// Defaults to false, since prepending an apostrophe changes the field's
+// exact byte content — inappropriate for a machine-to-machine CSV consumer
+// that expects the source value verbatim. Opt in specifically when a human
+// may open the output in spreadsheet software.
+func WithEscapeFormulas(escape bool) CSVOption {
+	return func(f *csvFormat) { f.escapeFormulas = escape }
+}
+
+// formulaTriggerChars are the leading characters that make a spreadsheet
+// application treat an imported CSV cell as a formula rather than literal
+// text.
+const formulaTriggerChars = "=+-@\t\r"
+
+// escapeFormula prefixes s with an apostrophe if its first byte is one of
+// formulaTriggerChars. Spreadsheet applications hide a leading apostrophe
+// and treat the rest of the cell as text, so this defuses the formula
+// without otherwise changing what a reader sees.
+func escapeFormula(s string) string {
+	if s == "" || strings.IndexByte(formulaTriggerChars, s[0]) < 0 {
+		return s
+	}
+	return "'" + s
+}
+
+// withFormulaEscape wraps fm so its rendered text is passed through
+// escapeFormula.
+func withFormulaEscape(fm formatter) formatter {
+	return func(arr arrow.Array, i int) string {
+		return escapeFormula(fm(arr, i))
+	}
+}
+
+// isFormulaEscapable reports whether dt's rendered CSV text can contain
+// arbitrary, human-authored or human-observable characters — as opposed to
+// a fixed-format numeric/boolean/timestamp rendering, which can never begin
+// with a formula-trigger character.
+func isFormulaEscapable(dt arrow.DataType) bool {
+	switch dt.ID() {
+	case arrow.STRING, arrow.BINARY:
+		return true
+	default:
+		return false
+	}
+}
+
 // CSV selects the CSV file format. Column order and names come from the
 // schema (not inferred from data). Encoding defaults to RFC 4180 — minimal
-// quoting, doubled-quote escaping — via a small fork of the standard
-// library's encoding/csv (see csv_writer.go) that adds WithEscapeCharacter
-// and WithAlwaysEncapsulate as opt-in, non-standard extensions.
+// quoting, doubled-quote escaping, no formula escaping — via a small fork of
+// the standard library's encoding/csv (see csv_writer.go) that adds
+// WithEscapeCharacter and WithAlwaysEncapsulate as opt-in, non-standard
+// extensions. WithEscapeFormulas is a separate opt-in extension, layered on
+// top rather than forked from encoding/csv, guarding against spreadsheet
+// formula injection.
 func CSV(opts ...CSVOption) Format {
 	f := csvFormat{delimiter: ',', writeHeader: true}
 	for _, opt := range opts {
@@ -88,6 +149,9 @@ func (f csvFormat) NewWriter(schema *arrow.Schema, w io.Writer) (RecordWriter, e
 		fm, err := csvFormatterFor(field.Type)
 		if err != nil {
 			return nil, fmt.Errorf("field %d (%s): %w", i, field.Name, err)
+		}
+		if f.escapeFormulas && isFormulaEscapable(field.Type) {
+			fm = withFormulaEscape(fm)
 		}
 		formatters[i] = fm
 	}
@@ -119,6 +183,10 @@ type csvRecordWriter struct {
 }
 
 func (w *csvRecordWriter) Write(rec arrow.Record) error {
+	if !rec.Schema().Equal(w.schema) {
+		return fmt.Errorf("filesink: csv: record schema %s does not match writer schema %s", rec.Schema(), w.schema)
+	}
+
 	if w.writeHeader && !w.headerDone {
 		header := make([]string, w.schema.NumFields())
 		for i, field := range w.schema.Fields() {
@@ -148,10 +216,13 @@ func (w *csvRecordWriter) Write(rec arrow.Record) error {
 		}
 	}
 
-	w.w.Flush()
-	return w.w.Error()
+	return nil
 }
 
+// Close flushes any output buffered across every prior Write call. Write
+// itself deliberately does not flush per batch — csvWriter wraps a
+// bufio.Writer, so flushing here rather than after every batch lets writes
+// coalesce into fewer, larger calls to the underlying blob writer.
 func (w *csvRecordWriter) Close() error {
 	w.w.Flush()
 	return w.w.Error()

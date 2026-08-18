@@ -3,6 +3,7 @@ package filesink_test
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/csv"
 	"strings"
 	"testing"
@@ -453,6 +454,325 @@ func TestCSVUnsupportedSchemaType(t *testing.T) {
 	var buf bytes.Buffer
 	if _, err := filesink.CSV().NewWriter(schema, &buf); err == nil {
 		t.Fatal("want error for unsupported schema field type")
+	}
+}
+
+func TestCSVMultipleRecordsSameSchema(t *testing.T) {
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "id", Type: arrow.PrimitiveTypes.Int64},
+	}, nil)
+
+	newRec := func(v int64) arrow.Record {
+		b := array.NewInt64Builder(memory.DefaultAllocator)
+		defer b.Release()
+		b.Append(v)
+		arr := b.NewArray()
+		defer arr.Release()
+		rec := array.NewRecord(schema, []arrow.Array{arr}, 1)
+		t.Cleanup(rec.Release)
+		return rec
+	}
+
+	var buf bytes.Buffer
+	w, err := filesink.CSV().NewWriter(schema, &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Write(newRec(1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Write(newRec(2)); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Write(newRec(3)); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	r := csv.NewReader(bytes.NewReader(buf.Bytes()))
+	rows, err := r.ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 4 { // header + 3 rows
+		t.Fatalf("rows=%v, want header + 3 rows", rows)
+	}
+	for i, want := range []string{"1", "2", "3"} {
+		if rows[i+1][0] != want {
+			t.Fatalf("row %d=%v, want id=%q", i+1, rows[i+1], want)
+		}
+	}
+}
+
+func TestCSVWriteSchemaMismatchFewerColumnsErrors(t *testing.T) {
+	schemaA := arrow.NewSchema([]arrow.Field{
+		{Name: "id", Type: arrow.PrimitiveTypes.Int64},
+		{Name: "name", Type: arrow.BinaryTypes.String},
+	}, nil)
+	schemaB := arrow.NewSchema([]arrow.Field{
+		{Name: "id", Type: arrow.PrimitiveTypes.Int64},
+	}, nil)
+
+	idB := array.NewInt64Builder(memory.DefaultAllocator)
+	defer idB.Release()
+	idB.Append(1)
+	nameB := array.NewStringBuilder(memory.DefaultAllocator)
+	defer nameB.Release()
+	nameB.Append("widget")
+	idArr := idB.NewArray()
+	defer idArr.Release()
+	nameArr := nameB.NewArray()
+	defer nameArr.Release()
+	recA := array.NewRecord(schemaA, []arrow.Array{idArr, nameArr}, 1)
+	defer recA.Release()
+
+	idB2 := array.NewInt64Builder(memory.DefaultAllocator)
+	defer idB2.Release()
+	idB2.Append(2)
+	idArr2 := idB2.NewArray()
+	defer idArr2.Release()
+	recB := array.NewRecord(schemaB, []arrow.Array{idArr2}, 1)
+	defer recB.Release()
+
+	var buf bytes.Buffer
+	w, err := filesink.CSV().NewWriter(schemaA, &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Write(recA); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := w.Write(recB); err == nil {
+		t.Fatal("want error writing a record with fewer columns than the writer's schema")
+	}
+}
+
+func TestCSVWriteSchemaMismatchMoreColumnsErrors(t *testing.T) {
+	schemaA := arrow.NewSchema([]arrow.Field{
+		{Name: "id", Type: arrow.PrimitiveTypes.Int64},
+	}, nil)
+	schemaB := arrow.NewSchema([]arrow.Field{
+		{Name: "id", Type: arrow.PrimitiveTypes.Int64},
+		{Name: "extra", Type: arrow.BinaryTypes.String},
+	}, nil)
+
+	idB := array.NewInt64Builder(memory.DefaultAllocator)
+	defer idB.Release()
+	idB.Append(1)
+	idArr := idB.NewArray()
+	defer idArr.Release()
+	recA := array.NewRecord(schemaA, []arrow.Array{idArr}, 1)
+	defer recA.Release()
+
+	idB2 := array.NewInt64Builder(memory.DefaultAllocator)
+	defer idB2.Release()
+	idB2.Append(2)
+	idArr2 := idB2.NewArray()
+	defer idArr2.Release()
+	extraB := array.NewStringBuilder(memory.DefaultAllocator)
+	defer extraB.Release()
+	extraB.Append("surprise")
+	extraArr := extraB.NewArray()
+	defer extraArr.Release()
+	recB := array.NewRecord(schemaB, []arrow.Array{idArr2, extraArr}, 1)
+	defer recB.Release()
+
+	var buf bytes.Buffer
+	w, err := filesink.CSV().NewWriter(schemaA, &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Write(recA); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := w.Write(recB); err == nil {
+		t.Fatal("want error writing a record with more columns than the writer's schema")
+	}
+}
+
+func TestCSVWriteSchemaMismatchDifferentTypeErrors(t *testing.T) {
+	schemaA := arrow.NewSchema([]arrow.Field{
+		{Name: "value", Type: arrow.PrimitiveTypes.Int64},
+	}, nil)
+	schemaB := arrow.NewSchema([]arrow.Field{
+		{Name: "value", Type: arrow.BinaryTypes.String},
+	}, nil)
+
+	idB := array.NewInt64Builder(memory.DefaultAllocator)
+	defer idB.Release()
+	idB.Append(1)
+	idArr := idB.NewArray()
+	defer idArr.Release()
+	recA := array.NewRecord(schemaA, []arrow.Array{idArr}, 1)
+	defer recA.Release()
+
+	strB := array.NewStringBuilder(memory.DefaultAllocator)
+	defer strB.Release()
+	strB.Append("oops")
+	strArr := strB.NewArray()
+	defer strArr.Release()
+	recB := array.NewRecord(schemaB, []arrow.Array{strArr}, 1)
+	defer recB.Release()
+
+	var buf bytes.Buffer
+	w, err := filesink.CSV().NewWriter(schemaA, &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Write(recA); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := w.Write(recB); err == nil {
+		t.Fatal("want error writing a record whose column type differs from the writer's schema")
+	}
+}
+
+func TestCSVFormulasNotEscapedByDefault(t *testing.T) {
+	schema := arrow.NewSchema([]arrow.Field{{Name: "value", Type: arrow.BinaryTypes.String}}, nil)
+
+	b := array.NewStringBuilder(memory.DefaultAllocator)
+	defer b.Release()
+	b.Append("=SUM(A1:A2)")
+	arr := b.NewArray()
+	defer arr.Release()
+	rec := array.NewRecord(schema, []arrow.Array{arr}, 1)
+	defer rec.Release()
+
+	var buf bytes.Buffer
+	w, err := filesink.CSV().NewWriter(schema, &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Write(rec); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	r := csv.NewReader(bytes.NewReader(buf.Bytes()))
+	rows, err := r.ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "=SUM(A1:A2)"; rows[1][0] != want {
+		t.Fatalf("value=%q, want %q unescaped by default", rows[1][0], want)
+	}
+}
+
+func TestCSVWithEscapeFormulasPrefixesTriggerChars(t *testing.T) {
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "formula", Type: arrow.BinaryTypes.String},
+		{Name: "plus", Type: arrow.BinaryTypes.String},
+		{Name: "minus", Type: arrow.BinaryTypes.String},
+		{Name: "at", Type: arrow.BinaryTypes.String},
+		{Name: "tab", Type: arrow.BinaryTypes.String},
+		{Name: "cr", Type: arrow.BinaryTypes.String},
+		{Name: "safe", Type: arrow.BinaryTypes.String},
+		{Name: "empty", Type: arrow.BinaryTypes.String, Nullable: true},
+	}, nil)
+
+	values := []string{
+		"=SUM(A1:A2)",
+		"+1",
+		"-1",
+		"@cmd",
+		"\tfoo",
+		"\rfoo",
+		"hello",
+		"",
+	}
+	cols := make([]arrow.Array, len(values))
+	for i, v := range values {
+		b := array.NewStringBuilder(memory.DefaultAllocator)
+		if v == "" {
+			b.AppendNull()
+		} else {
+			b.Append(v)
+		}
+		cols[i] = b.NewArray()
+		b.Release()
+		defer cols[i].Release()
+	}
+	rec := array.NewRecord(schema, cols, 1)
+	defer rec.Release()
+
+	var buf bytes.Buffer
+	w, err := filesink.CSV(filesink.WithEscapeFormulas(true)).NewWriter(schema, &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Write(rec); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	r := csv.NewReader(bytes.NewReader(buf.Bytes()))
+	rows, err := r.ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := rows[1]
+	want := []string{"'=SUM(A1:A2)", "'+1", "'-1", "'@cmd", "'\tfoo", "'\rfoo", "hello", ""}
+	if !equalStrings(row, want) {
+		t.Fatalf("row=%q, want %q", row, want)
+	}
+}
+
+func TestCSVWithEscapeFormulasAppliesToBinaryField(t *testing.T) {
+	// base64 can legitimately produce a leading '+' (it's part of the
+	// base64 alphabet), so a binary field rendered as base64 text is just
+	// as exposed to formula injection as a string field.
+	schema := arrow.NewSchema([]arrow.Field{{Name: "notes", Type: arrow.BinaryTypes.Binary}}, nil)
+
+	// base64("\xfb...") starts with '+'; find bytes whose encoding does.
+	var raw []byte
+	var encoded string
+	for b := byte(0); ; b++ {
+		encoded = base64.StdEncoding.EncodeToString([]byte{b, 0, 0})
+		if strings.HasPrefix(encoded, "+") {
+			raw = []byte{b, 0, 0}
+			break
+		}
+		if b == 255 {
+			t.Fatal("could not find a byte sequence whose base64 encoding starts with '+'")
+		}
+	}
+
+	nb := array.NewBinaryBuilder(memory.DefaultAllocator, arrow.BinaryTypes.Binary)
+	defer nb.Release()
+	nb.Append(raw)
+	arr := nb.NewArray()
+	defer arr.Release()
+	rec := array.NewRecord(schema, []arrow.Array{arr}, 1)
+	defer rec.Release()
+
+	var buf bytes.Buffer
+	w, err := filesink.CSV(filesink.WithEscapeFormulas(true)).NewWriter(schema, &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Write(rec); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	r := csv.NewReader(bytes.NewReader(buf.Bytes()))
+	rows, err := r.ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "'" + encoded; rows[1][0] != want {
+		t.Fatalf("value=%q, want %q", rows[1][0], want)
 	}
 }
 

@@ -1,0 +1,82 @@
+sqlsource/source.go
+  s_4a5e8f8c25f3c2::t_e603e2836badf0 40-42
+  s_4a5e8f8c25f3c2::t_4025d7e653d5a5 70-76
+pipeline.go
+  s_4a5e8f8c25f3c2::t_a609c794f3dfb9 205-208
+  s_4a5e8f8c25f3c2::t_a739a532fb1fa5 83-85,97-99,112-114,132-134,140-151
+  s_4a5e8f8c25f3c2::t_3108f7c97e7712 180-182
+  s_4a5e8f8c25f3c2::t_f82d170eb0758f 47
+  s_4a5e8f8c25f3c2::t_02ae52f666f501 152-153
+pipeline_test.go
+  s_4a5e8f8c25f3c2::t_cf964b8ef7afbb 194-237
+sqlsource/lookup.go
+  s_4a5e8f8c25f3c2::t_79a720ee821867 79-88
+sqlsource/types.go
+  s_4a5e8f8c25f3c2::t_1e761c135fb8db 37-41
+  s_4a5e8f8c25f3c2::t_59f32803257fe5 215-226
+sqlsource/source_test.go
+  s_4a5e8f8c25f3c2::t_f4b018b4800b6f 301-347,485
+  s_4a5e8f8c25f3c2::t_159374d1b309da 487-533
+  s_4a5e8f8c25f3c2::t_1a87352117dca5 482
+  s_4a5e8f8c25f3c2::t_be018c706e0fb4 480-481,483-484
+  s_4a5e8f8c25f3c2::t_4f2cc7c33a2fc1 125-128,138,141,149
+  s_ec96f804440015::t_f5e94a713eb163 486
+filesink/csv_writer.go
+  s_4a5e8f8c25f3c2::t_4cd83d30affde9 120,123-128,130-135,146-153
+  s_4a5e8f8c25f3c2::t_da507548abb6f8 129
+filesink/csv_test.go
+  s_4a5e8f8c25f3c2::t_46dc73f6080f10 253-327
+examples/sql-lookup-merge/main.go
+  s_4a5e8f8c25f3c2::t_6e0686245ca3a5 32-36,38-39,48-65
+  s_4a5e8f8c25f3c2::t_9acbf014d111ce 93-95,97,100,108-110,113,116
+  s_4a5e8f8c25f3c2::t_b47fffbbbada6d 160-168
+sqlsource/lookup_test.go
+  s_4a5e8f8c25f3c2::t_d23719fb914711 259-278
+  s_4a5e8f8c25f3c2::t_f329231de3e06c 49-50,52-57
+sqlsource/lookup_keys_test.go
+  s_4a5e8f8c25f3c2::t_2c7ff5e0d1b2a1 69
+  s_4a5e8f8c25f3c2::t_4cad7266bc5a9f 4,6
+  s_4a5e8f8c25f3c2::t_adb1c770e49381 62-68,70-147
+ARCHITECTURE.md
+  s_4a5e8f8c25f3c2::t_9cba0bc295e38f 21,24
+filesink/sink_test.go
+  s_4a5e8f8c25f3c2::t_d122cd12617ae9 37
+  s_4a5e8f8c25f3c2::t_8a7034c006cb1e 94-105
+.github/workflows/ci.yml
+  s_4a5e8f8c25f3c2::t_d450d585a02bd4 5-6
+README.md
+  s_4a5e8f8c25f3c2::t_2cc959e97f4be1 128-130,133-135
+  s_4a5e8f8c25f3c2::t_c5061baa034e60 154-156
+  s_4a5e8f8c25f3c2::t_22b19be7ab7ae5 100-102
+filesink/format.go
+  s_4a5e8f8c25f3c2::t_191214a19759b1 66-68
+  s_4a5e8f8c25f3c2::t_3102b7d48f538f 79-82
+sqlsource/lookup_keys.go
+  s_4a5e8f8c25f3c2::t_69c6c1f25a297c 5
+  s_4a5e8f8c25f3c2::t_5c1e47f91eac9d 17-20
+  s_4a5e8f8c25f3c2::t_2cfe6c144b6d4f 37,43-44,47-48,53-61,64-67,69-72,74-77,79-82,84-87,89-97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "3298cc0321b147af9f0ed0bb9a8b3299d9f7153f",
+  "prompts": {},
+  "sessions": {
+    "s_4a5e8f8c25f3c2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a7fbb5f3-1a79-469c-a25f-00e15d4d0737",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    },
+    "s_ec96f804440015": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ee17cd3-58bb-4593-ad7c-7fc3c2da41d8",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    }
+  }
+}

@@ -96,6 +96,12 @@ func (float64Converter) append(b array.Builder, v any) error {
 		bb.Append(x)
 	case float32:
 		bb.Append(float64(x))
+	case int64:
+		bb.Append(float64(x))
+	case int32:
+		bb.Append(float64(x))
+	case int:
+		bb.Append(float64(x))
 	case []byte:
 		f, err := strconv.ParseFloat(string(x), 64)
 		if err != nil {
@@ -128,6 +134,10 @@ func (boolConverter) append(b array.Builder, v any) error {
 	case bool:
 		bb.Append(x)
 	case int64:
+		bb.Append(x != 0)
+	case int32:
+		bb.Append(x != 0)
+	case int:
 		bb.Append(x != 0)
 	case []byte:
 		// Some drivers (notably certain MySQL/MSSQL BIT(1) handling) return a

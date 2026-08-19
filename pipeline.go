@@ -172,13 +172,37 @@ func isNilValue(v any) bool {
 // every stage rather than once per stage registration. *ArrowBatch is the
 // only Batch implementation this package ships, so a type assertion to it
 // serves the overwhelming majority of calls at the same cost as a plain b ==
-// nil comparison, reserving isNilValue's reflection for the rare custom
-// Batch implementation.
+// nil comparison, reserving reflection for the rare custom Batch
+// implementation.
+//
+// Unlike isNilValue, nilBatch rejects every nil-capable kind (map, slice,
+// func, chan, and pointer), not just nil pointers. isNilValue's pointer-only
+// carve-out exists for Source/Processor/Sink, whose single-method shape
+// makes a named map/slice/func/chan type with a value-receiver method that
+// ignores the receiver a plausible, safe adapter (mirroring
+// http.HandlerFunc). Batch has no such use case: Schema, NumRows, and
+// Record must return real, usable data, which a nil map, slice, func, or
+// chan receiver has no way to carry without the method touching the
+// receiver — at which point a nil func or chan panics unconditionally on
+// invocation, and a nil map or slice is indistinguishable from a
+// legitimately empty one, so treating a nil value of any of these kinds as
+// a well-formed Batch offers no real capability. Rejecting them here costs
+// nothing valid while catching the same class of bug isNilValue's pointer
+// check exists to catch.
 func nilBatch(b Batch) bool {
 	if ab, ok := b.(*ArrowBatch); ok {
 		return ab == nil
 	}
-	return isNilValue(b)
+	if b == nil {
+		return true
+	}
+	rv := reflect.ValueOf(b)
+	switch rv.Kind() {
+	case reflect.Ptr, reflect.Map, reflect.Slice, reflect.Func, reflect.Chan:
+		return rv.IsNil()
+	default:
+		return false
+	}
 }
 
 // setErrLocked records the first builder-time validation error for p, such as

@@ -91,6 +91,9 @@ func New(db *sql.DB, query string, schema *arrow.Schema, opts ...Option) (*Sourc
 
 	converters := make([]converter, schema.NumFields())
 	for i, f := range schema.Fields() {
+		if f.Type == nil {
+			return nil, fmt.Errorf("sqlsource: field %d (%s): nil type", i, f.Name)
+		}
 		c, err := converterFor(f.Type)
 		if err != nil {
 			return nil, fmt.Errorf("sqlsource: field %d (%s): %w", i, f.Name, err)

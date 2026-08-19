@@ -398,6 +398,73 @@ func TestSendTypedNilCustomBatchReturnsErrorInsteadOfPanicking(t *testing.T) {
 	}
 }
 
+// nilMapBatch and nilSliceBatch are named map/slice types implementing
+// Batch, the same adapter shape that nilSliceSource/nilSliceProcessor/
+// nilSliceSink above use to prove isNilValue must accept a nil stage. Batch
+// is different: Schema, NumRows, and Record must produce real data, which a
+// nil map or slice receiver cannot supply without touching the receiver, so
+// nilBatch (unlike isNilValue) must reject a nil value of either type
+// instead of letting it reach Retain/Release/Record downstream.
+type nilMapBatch map[string]int
+
+func (nilMapBatch) Schema() *arrow.Schema { return nil }
+func (nilMapBatch) NumRows() int64        { return 0 }
+func (nilMapBatch) Record() arrow.Record  { return nil }
+func (nilMapBatch) Retain()               {}
+func (nilMapBatch) Release()              {}
+
+type nilSliceBatch []int
+
+func (nilSliceBatch) Schema() *arrow.Schema { return nil }
+func (nilSliceBatch) NumRows() int64        { return 0 }
+func (nilSliceBatch) Record() arrow.Record  { return nil }
+func (nilSliceBatch) Retain()               {}
+func (nilSliceBatch) Release()              {}
+
+type nilMapBatchSource struct{}
+
+func (nilMapBatchSource) Run(ctx context.Context, out Output) error {
+	var b nilMapBatch
+	return out.Send(ctx, b)
+}
+
+type nilSliceBatchSource struct{}
+
+func (nilSliceBatchSource) Run(ctx context.Context, out Output) error {
+	var b nilSliceBatch
+	return out.Send(ctx, b)
+}
+
+func TestSendNilMapOrSliceBatchReturnsErrorInsteadOfPanicking(t *testing.T) {
+	const want = "etl: cannot send a nil batch"
+
+	t.Run("map", func(t *testing.T) {
+		p := New()
+		p.From(nilMapBatchSource{}).To(SinkFuncs{})
+
+		err := p.Run(context.Background())
+		if err == nil {
+			t.Fatal("want error for nil map-backed Batch passed to Send, got nil")
+		}
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Run error = %q, want it to contain %q", err.Error(), want)
+		}
+	})
+
+	t.Run("slice", func(t *testing.T) {
+		p := New()
+		p.From(nilSliceBatchSource{}).To(SinkFuncs{})
+
+		err := p.Run(context.Background())
+		if err == nil {
+			t.Fatal("want error for nil slice-backed Batch passed to Send, got nil")
+		}
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Run error = %q, want it to contain %q", err.Error(), want)
+		}
+	})
+}
+
 // TestPipelineFrozenAfterFailedValidationRun verifies that a Run which fails
 // because a builder call was given a nil stage still marks the pipeline as
 // started, consistent with the single-use contract: a later builder call

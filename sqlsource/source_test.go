@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"io"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -622,6 +623,165 @@ func TestSourceTimestampFromTextDriverValueWithTimeZone(t *testing.T) {
 	}
 	if utcAssumed == want {
 		t.Fatalf("test is not discriminating: UTC-assumed parse %v unexpectedly equals zone-aware parse %v", utcAssumed, want)
+	}
+}
+
+// TestSourceTimestampUnresolvableTimeZoneDoesNotFailSetup is a regression
+// test: converterFor used to resolve the schema field's declared TimeZone
+// via time.LoadLocation eagerly, so sqlsource.New failed immediately for any
+// schema declaring a TimeZone that doesn't resolve (e.g. because the binary
+// wasn't built with time/tzdata and isn't running where the system zoneinfo
+// database is available), even for callers whose driver only ever returns
+// time.Time — which never needs the resolved zone at all, since
+// arrow.TimestampFromTime works from the time.Time's own baked-in offset.
+// Resolution must be deferred until a text ([]byte/string) driver value
+// actually needs it.
+func TestSourceTimestampUnresolvableTimeZoneDoesNotFailSetup(t *testing.T) {
+	const badZone = "Not/A_Real_Zone"
+	if _, err := time.LoadLocation(badZone); err == nil {
+		t.Fatalf("test setup: %q unexpectedly resolved as a real zone", badZone)
+	}
+
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "id", Type: arrow.PrimitiveTypes.Int64},
+		{Name: "created_at", Type: &arrow.TimestampType{Unit: arrow.Microsecond, TimeZone: badZone}},
+	}, nil)
+
+	want := time.Date(2026, 7, 15, 12, 30, 0, 0, time.UTC)
+	dsn := registerFixture(t, &fixture{
+		columns: []string{"id", "created_at"},
+		rows: [][]driver.Value{
+			{int64(1), want},
+		},
+	})
+	db, err := sql.Open("sqlsourcefake", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	// Construction must succeed even though badZone can never be resolved:
+	// this is the setup-time regression under test.
+	src, err := sqlsource.New(db, "SELECT id, created_at FROM t", schema)
+	if err != nil {
+		t.Fatalf("sqlsource.New failed eagerly on an unresolvable TimeZone: %v", err)
+	}
+
+	// Feeding it a time.Time value (the common, idiomatic driver behavior)
+	// must still work fine, since that branch never consults the zone.
+	sink := runSource(t, src)
+	if len(sink.rows) != 1 {
+		t.Fatalf("rows=%v, want 1 row", sink.rows)
+	}
+	got, ok := sink.rows[0][1].(arrow.Timestamp)
+	if !ok {
+		t.Fatalf("created_at = %#v (%T), want arrow.Timestamp", sink.rows[0][1], sink.rows[0][1])
+	}
+	wantTS, err := arrow.TimestampFromTime(want, arrow.Microsecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != wantTS {
+		t.Fatalf("created_at = %v, want %v", got, wantTS)
+	}
+}
+
+// TestSourceTimestampUnresolvableTimeZoneErrorsOnTextValue complements
+// TestSourceTimestampUnresolvableTimeZoneDoesNotFailSetup: once a driver
+// actually hands back naive text under a schema whose TimeZone can't be
+// resolved, that (and only that) is where the error must surface.
+func TestSourceTimestampUnresolvableTimeZoneErrorsOnTextValue(t *testing.T) {
+	const badZone = "Not/A_Real_Zone"
+	if _, err := time.LoadLocation(badZone); err == nil {
+		t.Fatalf("test setup: %q unexpectedly resolved as a real zone", badZone)
+	}
+
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "id", Type: arrow.PrimitiveTypes.Int64},
+		{Name: "created_at", Type: &arrow.TimestampType{Unit: arrow.Microsecond, TimeZone: badZone}},
+	}, nil)
+
+	dsn := registerFixture(t, &fixture{
+		columns: []string{"id", "created_at"},
+		rows: [][]driver.Value{
+			// Naive text: needs the (unresolvable) declared zone to parse.
+			{int64(1), "2026-07-15 12:30:00"},
+		},
+	})
+	db, err := sql.Open("sqlsourcefake", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	src, err := sqlsource.New(db, "SELECT id, created_at FROM t", schema)
+	if err != nil {
+		t.Fatalf("sqlsource.New failed eagerly on an unresolvable TimeZone: %v", err)
+	}
+
+	p := etl.New()
+	sink := &countingSink{}
+	p.From(src).To(sink)
+	err = p.Run(context.Background())
+	if err == nil {
+		t.Fatal("Run succeeded, want an error resolving the declared time zone for naive text")
+	}
+	if !strings.Contains(err.Error(), badZone) {
+		t.Fatalf("Run error = %v, want it to mention the unresolvable zone %q", err, badZone)
+	}
+}
+
+// TestSourceTimestampCaseInsensitiveUTCTimeZone is a regression test:
+// timestampTextLocation used to compare a schema's declared TimeZone against
+// the exact, case-sensitive string "UTC" before falling through to
+// time.LoadLocation, but Arrow's own convention (see arrow-go's
+// TimestampType.GetZone) treats "UTC" and "utc" as equivalent. Any other
+// casing was looked up as if it were a real IANA zone name via
+// time.LoadLocation, which fails for a spelling like "utc" that isn't a real
+// zone file name, including (unlike a real IANA zone) on builds without
+// tzdata linked in.
+func TestSourceTimestampCaseInsensitiveUTCTimeZone(t *testing.T) {
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "id", Type: arrow.PrimitiveTypes.Int64},
+		{Name: "created_at", Type: &arrow.TimestampType{Unit: arrow.Microsecond, TimeZone: "utc"}},
+	}, nil)
+
+	want, err := arrow.TimestampFromString("2026-07-15 12:30:00", arrow.Microsecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dsn := registerFixture(t, &fixture{
+		columns: []string{"id", "created_at"},
+		rows: [][]driver.Value{
+			// Naive text: must be parsed as UTC without needing tzdata,
+			// exactly like a TimeZone of "" or "UTC" would be.
+			{int64(1), []byte("2026-07-15 12:30:00")},
+			{int64(2), "2026-07-15 12:30:00"},
+		},
+	})
+	db, err := sql.Open("sqlsourcefake", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	src, err := sqlsource.New(db, "SELECT id, created_at FROM t", schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sink := runSource(t, src)
+
+	if len(sink.rows) != 2 {
+		t.Fatalf("rows=%v, want 2 rows", sink.rows)
+	}
+	for i, row := range sink.rows {
+		got, ok := row[1].(arrow.Timestamp)
+		if !ok {
+			t.Fatalf("row %d: created_at = %#v (%T), want arrow.Timestamp", i, row[1], row[1])
+		}
+		if got != want {
+			t.Fatalf("row %d: created_at = %v, want %v", i, got, want)
+		}
 	}
 }
 

@@ -144,21 +144,27 @@ func (s Stream) To(sink Sink) {
 // == nil only when both its type and value are nil, so a plain `v == nil`
 // check misses the typed-nil case: the interface carries a concrete type
 // descriptor and a nil value pointer, so it compares != nil even though
-// calling any method on it dereferences a nil receiver. Only pointer-like
-// kinds support IsNil; anything else (e.g. a struct value implementing the
-// interface) is never nil and reflect.Value.IsNil would panic on it, so
-// Kind is checked first.
+// calling any method on it dereferences a nil receiver.
+//
+// The check is deliberately narrow: only Kind() == reflect.Ptr is treated as
+// possibly nil-and-invalid. A nil map, slice, chan, or func can be a
+// perfectly valid, safe stage value — for example a named slice type with a
+// value-receiver method that never touches the receiver (mirroring
+// http.HandlerFunc-style adapters), which is legal and idiomatic Go. Only a
+// nil pointer is guaranteed to blow up the moment a method with a pointer
+// receiver dereferences one of its fields, which is the concrete failure
+// mode this validation exists to catch. (Kind() can never be
+// reflect.Interface here: v's static type is the empty interface, so
+// reflect.ValueOf(v) always unwraps to v's concrete dynamic type or is
+// invalid; it is never itself interface-kinded.) Kind is checked before
+// IsNil because IsNil panics on kinds that don't support it, e.g. a struct
+// value implementing the interface.
 func isNilStage(v any) bool {
 	if v == nil {
 		return true
 	}
 	rv := reflect.ValueOf(v)
-	switch rv.Kind() {
-	case reflect.Ptr, reflect.Map, reflect.Chan, reflect.Func, reflect.Slice, reflect.Interface:
-		return rv.IsNil()
-	default:
-		return false
-	}
+	return rv.Kind() == reflect.Ptr && rv.IsNil()
 }
 
 // setErrLocked records the first builder-time validation error for p, such as

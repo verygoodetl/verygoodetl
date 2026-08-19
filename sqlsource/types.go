@@ -3,6 +3,8 @@ package sqlsource
 import (
 	"fmt"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -38,11 +40,7 @@ func converterFor(dt arrow.DataType) (converter, error) {
 		if !ok {
 			return nil, fmt.Errorf("expected *arrow.TimestampType for %s, got %T", dt, dt)
 		}
-		loc, err := timestampTextLocation(ts.TimeZone)
-		if err != nil {
-			return nil, fmt.Errorf("load time zone %q: %w", ts.TimeZone, err)
-		}
-		return timestampConverter{dt: ts, loc: loc}, nil
+		return timestampConverter{dt: ts, zone: &timestampZone{tz: ts.TimeZone}}, nil
 	default:
 		return nil, fmt.Errorf("unsupported type %s", dt)
 	}
@@ -198,13 +196,40 @@ func (binaryConverter) append(b array.Builder, v any) error {
 // so any dropped attribute here would panic at record-construction time
 // for any schema that declares one.
 //
-// loc is the *time.Location that dt.TimeZone resolves to, precomputed once
-// in converterFor (rather than on every append) since time.LoadLocation can
-// hit disk for tzdata lookups. It is used only for text ([]byte/string)
-// driver values that carry no explicit UTC offset of their own; see append.
+// zone lazily resolves dt.TimeZone to a *time.Location the first (and only
+// the first) time a text ([]byte/string) driver value actually needs it; see
+// parseTimestampText. Resolution is deferred rather than done eagerly in
+// converterFor because time.LoadLocation requires either the host's zoneinfo
+// files or a blank-imported time/tzdata to resolve any zone other than "UTC"
+// or "Local" — on a tzdata-less build/container, a driver that always
+// returns time.Time (the append case below, which never needs a resolved
+// zone: arrow.TimestampFromTime works from the time.Time's own offset) would
+// otherwise be unable to use a non-UTC-declared schema at all, even though
+// the zone is never actually needed.
 type timestampConverter struct {
-	dt  *arrow.TimestampType
-	loc *time.Location
+	dt   *arrow.TimestampType
+	zone *timestampZone
+}
+
+// timestampZone lazily and cheaply resolves a schema-declared TimeZone
+// string to a *time.Location, caching the result (or error) after the first
+// resolution via sync.Once so that a timestampConverter reused across many
+// rows in the hot path pays the time.LoadLocation cost (which can hit disk
+// for tzdata lookups) at most once, rather than fresh on every row that
+// needs it, while still not paying it at all when it's never needed.
+type timestampZone struct {
+	tz string
+
+	once sync.Once
+	loc  *time.Location
+	err  error
+}
+
+func (z *timestampZone) resolve() (*time.Location, error) {
+	z.once.Do(func() {
+		z.loc, z.err = timestampTextLocation(z.tz)
+	})
+	return z.loc, z.err
 }
 
 func (c timestampConverter) newBuilder(mem memory.Allocator) array.Builder {
@@ -265,7 +290,19 @@ func (c timestampConverter) parseTimestampText(s string) (arrow.Timestamp, error
 	if err != nil {
 		return 0, err
 	}
-	if hadZone || c.loc == time.UTC {
+	if hadZone {
+		return ts, nil
+	}
+
+	// s is naive: only now (and only the first time) do we need the schema's
+	// declared zone resolved, so an unresolvable TimeZone surfaces here
+	// rather than aborting source setup for callers whose driver only ever
+	// hands back time.Time (which never reaches this method at all).
+	loc, err := c.zone.resolve()
+	if err != nil {
+		return 0, fmt.Errorf("resolve declared time zone %q: %w", c.dt.TimeZone, err)
+	}
+	if loc == time.UTC {
 		return ts, nil
 	}
 
@@ -275,9 +312,9 @@ func (c timestampConverter) parseTimestampText(s string) (arrow.Timestamp, error
 	if err != nil {
 		return 0, err
 	}
-	t, err := time.ParseInLocation(layout, s, c.loc)
+	t, err := time.ParseInLocation(layout, s, loc)
 	if err != nil {
-		return 0, fmt.Errorf("parse %q in %s: %w", s, c.loc, err)
+		return 0, fmt.Errorf("parse %q in %s: %w", s, loc, err)
 	}
 	return arrow.TimestampFromTime(t, c.dt.Unit)
 }
@@ -288,8 +325,17 @@ func (c timestampConverter) parseTimestampText(s string) (arrow.Timestamp, error
 // the schema declares no zone at all, so naive text is treated as UTC,
 // matching arrow.TimestampFromString's own behavior and this package's
 // historical behavior before per-zone text parsing existed.
+//
+// tz is matched against "UTC" case-insensitively (rather than requiring the
+// exact string "UTC") before falling through to time.LoadLocation, because
+// Arrow's own TimestampType treats "UTC" and "utc" (and arrow-go's GetZone
+// treats both) as the zero-offset zone, whereas time.LoadLocation only
+// special-cases the exact, case-sensitive string "UTC" (or "Local") without
+// needing tzdata; any other casing would otherwise be looked up as a real
+// IANA zone name, which doesn't exist under that casing and fails even where
+// tzdata is available.
 func timestampTextLocation(tz string) (*time.Location, error) {
-	if tz == "" {
+	if tz == "" || strings.EqualFold(tz, "UTC") {
 		return time.UTC, nil
 	}
 	return time.LoadLocation(tz)

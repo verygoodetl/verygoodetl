@@ -276,6 +276,75 @@ func TestTypedNilStagesReturnErrorInsteadOfPanicking(t *testing.T) {
 	})
 }
 
+// nilSliceSource, nilSliceProcessor, and nilSliceSink are named slice types
+// implementing Source, Processor, and Sink respectively, with value-receiver
+// methods that never touch the receiver — the same shape as, say, a
+// http.HandlerFunc-style adapter or a named slice type used purely as a
+// marker. A nil value of any of these is a legal, safe stage: unlike
+// nilPtrSource/nilPtrProcessor/nilPtrSink above, invoking their methods on a
+// nil receiver never panics, so isNilStage must not reject them.
+type nilSliceSource []string
+
+func (nilSliceSource) Run(context.Context, Output) error { return nil }
+
+type nilSliceProcessor []string
+
+func (nilSliceProcessor) Process(ctx context.Context, b Batch, out Output) error {
+	return out.Send(ctx, b)
+}
+
+func (nilSliceProcessor) Finish(context.Context, Output) error { return nil }
+
+type nilSliceSink []string
+
+func (nilSliceSink) Consume(context.Context, Batch) error { return nil }
+
+func (nilSliceSink) Finish(context.Context) error { return nil }
+
+func TestNilNamedSliceStagesAreAcceptedNotRejected(t *testing.T) {
+	t.Run("From", func(t *testing.T) {
+		p := New()
+		var src nilSliceSource
+		p.From(src).To(SinkFuncs{})
+
+		if err := p.Run(context.Background()); err != nil {
+			t.Fatalf("Run: %v, want nil slice Source to be accepted", err)
+		}
+	})
+
+	t.Run("Process", func(t *testing.T) {
+		p := New()
+		var proc nilSliceProcessor
+		p.From(batchesSource{batches: []Batch{intBatch(t, 1)}}).Process(proc).To(SinkFuncs{})
+
+		if err := p.Run(context.Background()); err != nil {
+			t.Fatalf("Run: %v, want nil slice Processor to be accepted", err)
+		}
+	})
+
+	t.Run("Merge", func(t *testing.T) {
+		p := New()
+		left := p.From(batchesSource{batches: []Batch{intBatch(t, 1)}})
+		right := p.From(batchesSource{batches: []Batch{intBatch(t, 2)}})
+		var proc nilSliceProcessor
+		p.Merge(proc, left, right).To(SinkFuncs{})
+
+		if err := p.Run(context.Background()); err != nil {
+			t.Fatalf("Run: %v, want nil slice Processor passed to Merge to be accepted", err)
+		}
+	})
+
+	t.Run("To", func(t *testing.T) {
+		p := New()
+		var sink nilSliceSink
+		p.From(batchesSource{batches: []Batch{intBatch(t, 1)}}).To(sink)
+
+		if err := p.Run(context.Background()); err != nil {
+			t.Fatalf("Run: %v, want nil slice Sink to be accepted", err)
+		}
+	})
+}
+
 // TestPipelineFrozenAfterFailedValidationRun verifies that a Run which fails
 // because a builder call was given a nil stage still marks the pipeline as
 // started, consistent with the single-use contract: a later builder call

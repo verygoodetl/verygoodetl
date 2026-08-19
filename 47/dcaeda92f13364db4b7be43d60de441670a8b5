@@ -1,0 +1,54 @@
+filesink/csv.go
+  s_4e1f259c9eb853::t_2ba884b2f414e5 222-252,254-256
+  s_4e1f259c9eb853::t_61fb11b2d30121 197-198
+  s_4e1f259c9eb853::t_c1254c9a6bdbf0 165-169,174
+filesink/sink_test.go
+  s_4e1f259c9eb853::t_f0d85cae7d1979 40-56
+  s_4e1f259c9eb853::t_3ba21e288624ab 170-208
+  s_4e1f259c9eb853::t_fa993eddf35a0d 285-322
+sqlsource/types.go
+  s_4e1f259c9eb853::t_e5506a6862dbe1 133-141
+sqlsource/lookup_test.go
+  s_4e1f259c9eb853::t_54fecd7a3fc446 259-303
+pipeline_test.go
+  s_4e1f259c9eb853::t_67384c2871eab2 6
+  s_4e1f259c9eb853::t_104375392d3cc6 349-374
+filesink/csv_test.go
+  s_4e1f259c9eb853::t_3e5a2b807adbeb 846-847,999-1035
+  s_4e1f259c9eb853::t_d788b89648a152 797-799,807-845
+  s_4e1f259c9eb853::t_07a9ab3a2ea996 848
+examples/sql-lookup-merge/main.go
+  s_4e1f259c9eb853::t_fb038550355b8d 230
+ARCHITECTURE.md
+  s_4e1f259c9eb853::t_5cd55ca450defd 21-24
+  s_4e1f259c9eb853::t_f0c86a9c6be776 36-37
+pipeline.go
+  s_4e1f259c9eb853::t_5a283df21a4d3b 354-358
+  s_4e1f259c9eb853::t_7963bfccf40d68 84,98,113,133
+  s_4e1f259c9eb853::t_838a381272dcac 141,143-148,152,163
+sqlsource/source_test.go
+  s_4e1f259c9eb853::t_13c8037b41a277 302-330
+  s_4e1f259c9eb853::t_1c3ce74883659e 331-414
+sqlsource/source.go
+  s_4e1f259c9eb853::t_3e50565f44f124 56,58-62
+sqlsource/lookup.go
+  s_4e1f259c9eb853::t_5a4ffbaf58ef87 64-65,67-71
+README.md
+  s_4e1f259c9eb853::t_d9e31d8b868d33 89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "47dcaeda92f13364db4b7be43d60de441670a8b5",
+  "prompts": {},
+  "sessions": {
+    "s_4e1f259c9eb853": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "42e7feaf-c25b-4f62-aac1-25bc0a10c017",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    }
+  }
+}

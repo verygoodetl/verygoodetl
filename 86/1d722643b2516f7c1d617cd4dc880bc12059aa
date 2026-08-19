@@ -1,0 +1,20 @@
+sqlsource/types.go
+  s_28fa98d959486a::t_6f8f6257de4b7c 99-104
+  s_28fa98d959486a::t_7ed0c8c36bf804 138-141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "861d722643b2516f7c1d617cd4dc880bc12059aa",
+  "prompts": {},
+  "sessions": {
+    "s_28fa98d959486a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "faf0bf84-0fec-4071-9017-425ac2c822ef",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    }
+  }
+}

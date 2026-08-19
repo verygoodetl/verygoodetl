@@ -130,6 +130,15 @@ func (boolConverter) append(b array.Builder, v any) error {
 	case int64:
 		bb.Append(x != 0)
 	case []byte:
+		// Some drivers (notably certain MySQL/MSSQL BIT(1) handling) return a
+		// BIT column as a raw single-byte binary value (0x00/0x01) rather
+		// than ASCII text ("0"/"1"), which strconv.ParseBool doesn't accept.
+		// Handle that binary form directly before falling back to text
+		// parsing for drivers that do send BIT as ASCII text.
+		if len(x) == 1 && (x[0] == 0 || x[0] == 1) {
+			bb.Append(x[0] != 0)
+			return nil
+		}
 		bv, err := strconv.ParseBool(string(x))
 		if err != nil {
 			return fmt.Errorf("parse bool from %q: %w", x, err)

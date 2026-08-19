@@ -18,10 +18,10 @@ The graph supports fan-out by connecting one stream to multiple downstream stage
 
 The lifecycle contract is deliberately strong:
 
-1. A `Processor` or `Sink` stage receives zero or more batches; a `Source` stage receives none and only produces them.
-2. All upstream edges close successfully.
-3. The stage's `Finish` method runs exactly once.
-4. The runtime closes the stage's downstream edges after it returns.
+1. A `Source` stage receives no batches and only produces them; a `Processor` or `Sink` stage receives zero or more.
+2. For a `Processor` or `Sink`, all upstream edges close successfully before its `Finish` runs.
+3. A `Processor`'s or `Sink`'s `Finish` method runs exactly once; a `Source` has no `Finish` — its lifecycle ends when `Run` returns.
+4. The runtime closes the stage's downstream edges after it returns: after `Run` returns for a `Source`, after `Finish` returns for a `Processor` or `Sink`.
 
 If any stage fails, the pipeline context is canceled before that stage's downstream edges are closed. Downstream stages therefore must not interpret an upstream failure as a successful end-of-stream and run `Finish` on partial data.
 
@@ -32,6 +32,8 @@ This preserves a useful distinction between processing data as it arrives and fi
 The runtime treats batches as immutable.
 
 When a batch is sent downstream, the runtime retains one reference for each outgoing edge. A receiving processor or sink owns that retained reference for the duration of its callback; the runtime releases it when the callback returns.
+
+`Output.Send` transfers one retained reference to the runtime; the source or processor that created the batch may release its own reference once `Send` returns. `sqlsource.Source` follows this pattern: its scan loop defers `record.Release()` on the record it just built, immediately after handing it to `Send`.
 
 Immutability makes fan-out inexpensive with Arrow because branches can share the same underlying buffers. A transform that changes data should produce a new batch rather than mutate an input batch.
 

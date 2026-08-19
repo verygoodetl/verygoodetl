@@ -227,7 +227,7 @@ func main() {
 		for i := range placeholders {
 			placeholders[i] = "?"
 		}
-		query := fmt.Sprintf("SELECT id, status, weight FROM shipments WHERE id IN (%s)", strings.Join(placeholders, ","))
+		query := fmt.Sprintf("SELECT id, status, weight FROM shipments WHERE id IN (%s) ORDER BY id", strings.Join(placeholders, ","))
 		return query, args, nil
 	}
 	lookup, err := sqlsource.NewLookup(appDB, generate, appSchema)

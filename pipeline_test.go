@@ -3,6 +3,7 @@ package etl
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 
@@ -343,6 +344,32 @@ func TestNilNamedSliceStagesAreAcceptedNotRejected(t *testing.T) {
 			t.Fatalf("Run: %v, want nil slice Sink to be accepted", err)
 		}
 	})
+}
+
+// nilBatchSource sends a single typed-nil *ArrowBatch, mirroring the
+// nilPtrSource/nilPtrProcessor/nilPtrSink types above but for a Batch value
+// flowing through Output.Send rather than a stage passed to a builder
+// method: `var b *ArrowBatch = nil` wrapped in the Batch interface is not
+// == nil, so it exercises Send's typed-nil detection.
+type nilBatchSource struct{}
+
+func (nilBatchSource) Run(ctx context.Context, out Output) error {
+	var b *ArrowBatch
+	return out.Send(ctx, b)
+}
+
+func TestSendTypedNilBatchReturnsErrorInsteadOfPanicking(t *testing.T) {
+	p := New()
+	p.From(nilBatchSource{}).To(SinkFuncs{})
+
+	err := p.Run(context.Background())
+	if err == nil {
+		t.Fatal("want error for typed-nil Batch passed to Send, got nil")
+	}
+	const want = "etl: cannot send a nil batch"
+	if !strings.Contains(err.Error(), want) {
+		t.Fatalf("Run error = %q, want it to contain %q", err.Error(), want)
+	}
 }
 
 // TestPipelineFrozenAfterFailedValidationRun verifies that a Run which fails

@@ -256,6 +256,51 @@ func TestLookupQueryError(t *testing.T) {
 	}
 }
 
+// TestLookupWithAllocatorNilIgnored is a regression test: WithLookupAllocator
+// used to overwrite Lookup's mem field unconditionally, so passing nil
+// replaced the memory.DefaultAllocator set by NewLookup with a nil
+// allocator, which panics (or otherwise misbehaves) the first time an Arrow
+// builder is constructed from it. A nil mem must be silently ignored,
+// keeping the default, the same convention WithLookupBatchSize already
+// follows for an invalid n.
+func TestLookupWithAllocatorNilIgnored(t *testing.T) {
+	upstreamSchema := int64Schema("id")
+	resultSchema := arrow.NewSchema([]arrow.Field{
+		{Name: "id", Type: arrow.PrimitiveTypes.Int64},
+	}, nil)
+
+	dsn := registerFixture(t, &fixture{
+		columns: []string{"id"},
+		rows:    [][]driver.Value{{int64(1)}},
+	})
+	db, err := sql.Open("sqlsourcefake", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	generate := func(b etl.Batch) (string, []any, error) {
+		return "SELECT id FROM shipments WHERE id = ?", []any{int64(1)}, nil
+	}
+
+	lookup, err := sqlsource.NewLookup(db, generate, resultSchema, sqlsource.WithLookupAllocator(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	p := etl.New()
+	sink := &countingSink{}
+	p.From(fixedBatchSource{batches: []etl.Batch{int64Batch(t, upstreamSchema, 1)}}).
+		Process(lookup).To(sink)
+	if err := p.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(sink.rows) != 1 || sink.rows[0][0] != int64(1) {
+		t.Fatalf("rows=%v, want [[1]] (a nil WithLookupAllocator must not panic and must keep the default allocator)", sink.rows)
+	}
+}
+
 func TestLookupNilArguments(t *testing.T) {
 	resultSchema := arrow.NewSchema([]arrow.Field{{Name: "id", Type: arrow.PrimitiveTypes.Int64}}, nil)
 	db, err := sql.Open("sqlsourcefake", "unused")

@@ -299,6 +299,119 @@ func TestSourcePermissiveConversionFromBytes(t *testing.T) {
 	}
 }
 
+// TestSourceWithAllocatorNilIgnored is a regression test: WithAllocator used
+// to overwrite Source's mem field unconditionally, so passing nil replaced
+// the memory.DefaultAllocator set by New with a nil allocator, which panics
+// (or otherwise misbehaves) the first time an Arrow builder is constructed
+// from it. A nil mem must be silently ignored, keeping the default, the same
+// convention WithBatchSize already follows for an invalid n.
+func TestSourceWithAllocatorNilIgnored(t *testing.T) {
+	schema := int64Schema("id")
+	dsn := registerFixture(t, &fixture{
+		columns: []string{"id"},
+		rows:    [][]driver.Value{{int64(1)}},
+	})
+	db, err := sql.Open("sqlsourcefake", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	src, err := sqlsource.New(db, "SELECT id FROM t", schema, sqlsource.WithAllocator(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sink := runSource(t, src)
+
+	if len(sink.rows) != 1 || sink.rows[0][0] != int64(1) {
+		t.Fatalf("rows=%v, want [[1]] (a nil WithAllocator must not panic and must keep the default allocator)", sink.rows)
+	}
+}
+
+// boolSchema returns a schema of two columns, id (Int64) and value (Boolean),
+// matching the shape boolConverter tests below scan rows into.
+func boolSchema() *arrow.Schema {
+	return arrow.NewSchema([]arrow.Field{
+		{Name: "id", Type: arrow.PrimitiveTypes.Int64},
+		{Name: "value", Type: arrow.FixedWidthTypes.Boolean, Nullable: true},
+	}, nil)
+}
+
+// TestSourceBoolFromBinaryByte is a regression test: some drivers (notably
+// certain MySQL/MSSQL BIT(1) handling) scan a BIT column as a raw
+// single-byte binary value (0x00/0x01) rather than ASCII text ("0"/"1"),
+// which strconv.ParseBool doesn't accept, so boolConverter.append used to
+// error and abort the whole source on real BIT-column data from such
+// drivers.
+func TestSourceBoolFromBinaryByte(t *testing.T) {
+	schema := boolSchema()
+	dsn := registerFixture(t, &fixture{
+		columns: []string{"id", "value"},
+		rows: [][]driver.Value{
+			{int64(1), []byte{0x00}},
+			{int64(2), []byte{0x01}},
+		},
+	})
+	db, err := sql.Open("sqlsourcefake", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	src, err := sqlsource.New(db, "SELECT id, value FROM t", schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sink := runSource(t, src)
+
+	if len(sink.rows) != 2 {
+		t.Fatalf("rows=%v, want 2 rows", sink.rows)
+	}
+	if sink.rows[0][1] != false {
+		t.Fatalf("row 0 value=%v, want false", sink.rows[0][1])
+	}
+	if sink.rows[1][1] != true {
+		t.Fatalf("row 1 value=%v, want true", sink.rows[1][1])
+	}
+}
+
+// TestSourceBoolFromTextDriverValue confirms the existing ASCII-text
+// behavior (drivers that send BIT/BOOLEAN as text rather than raw binary)
+// still works unchanged alongside the binary-byte handling added above.
+func TestSourceBoolFromTextDriverValue(t *testing.T) {
+	schema := boolSchema()
+	dsn := registerFixture(t, &fixture{
+		columns: []string{"id", "value"},
+		rows: [][]driver.Value{
+			{int64(1), []byte("true")},
+			{int64(2), []byte("1")},
+			{int64(3), []byte("false")},
+			{int64(4), "0"},
+		},
+	})
+	db, err := sql.Open("sqlsourcefake", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	src, err := sqlsource.New(db, "SELECT id, value FROM t", schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sink := runSource(t, src)
+
+	want := []bool{true, true, false, false}
+	if len(sink.rows) != len(want) {
+		t.Fatalf("rows=%v, want %d rows", sink.rows, len(want))
+	}
+	for i, row := range sink.rows {
+		if row[1] != want[i] {
+			t.Fatalf("row %d value=%v, want %v", i, row[1], want[i])
+		}
+	}
+}
+
 func TestSourceNilDBAndSchema(t *testing.T) {
 	schema := int64Schema("id")
 	db, err := sql.Open("sqlsourcefake", "unused")

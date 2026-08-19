@@ -794,10 +794,55 @@ func TestCSVWithEscapeFormulasPrefixesTriggerChars(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(rows) != 2 { // header + 1 row
+		t.Fatalf("rows=%d, want 2: %v", len(rows), rows)
+	}
 	row := rows[1]
 	want := []string{"'=SUM(A1:A2)", "'+1", "'-1", "'@cmd", "'\tfoo", "'\rfoo", "hello", ""}
 	if !equalStrings(row, want) {
 		t.Fatalf("row=%q, want %q", row, want)
+	}
+}
+
+// TestCSVWithEscapeFormulasEscapesNullString verifies that a trigger-valued
+// null string (WithNullString) is passed through the same formula-escaping
+// chokepoint as every other cell when WithEscapeFormulas is set. Null cells
+// are written directly as w.nullString rather than through a formatter, so
+// they need their own escaping step (see NewWriter's precomputed nullString
+// in csv.go) instead of relying on the per-column formatter wrapping.
+func TestCSVWithEscapeFormulasEscapesNullString(t *testing.T) {
+	schema := arrow.NewSchema([]arrow.Field{{Name: "value", Type: arrow.BinaryTypes.String, Nullable: true}}, nil)
+
+	b := array.NewStringBuilder(memory.DefaultAllocator)
+	defer b.Release()
+	b.AppendNull()
+	arr := b.NewArray()
+	defer arr.Release()
+	rec := array.NewRecord(schema, []arrow.Array{arr}, 1)
+	defer rec.Release()
+
+	var buf bytes.Buffer
+	w, err := filesink.CSV(filesink.WithEscapeFormulas(true), filesink.WithNullString("=1+1")).NewWriter(schema, &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Write(rec); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	r := csv.NewReader(bytes.NewReader(buf.Bytes()))
+	rows, err := r.ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 { // header + 1 row
+		t.Fatalf("rows=%d, want 2: %v", len(rows), rows)
+	}
+	if rows[1][0] != "'=1+1" {
+		t.Fatalf("null value=%q, want %q", rows[1][0], "'=1+1")
 	}
 }
 
@@ -949,5 +994,42 @@ func TestSinkHappyPathCSV(t *testing.T) {
 	}
 	if rows[0][0] != "value" {
 		t.Fatalf("header=%v", rows[0])
+	}
+}
+
+// TestSinkZeroBatchesWithSchemaCSVWritesHeader verifies that a schema-only
+// Sink (WithSchema, zero batches consumed) still emits the header row on
+// Finish. Finish calls RecordWriter.Close directly without ever calling
+// Write when no batch arrives (see Finish at sink.go:80), so the header —
+// otherwise written lazily on the first Write call — must also be emitted
+// from Close for this case; see csvRecordWriter.Close / maybeWriteHeader in
+// csv.go.
+func TestSinkZeroBatchesWithSchemaCSVWritesHeader(t *testing.T) {
+	bucket := memblob.OpenBucket(nil)
+	defer bucket.Close()
+
+	schema := fieldSchema("value")
+	p := etl.New()
+	p.From(batchesSource{}).To(filesink.New(bucket, "empty.csv", filesink.CSV(filesink.WithHeader(true)), filesink.WithSchema(schema)))
+
+	if err := p.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := bucket.ReadAll(context.Background(), "empty.csv")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r := csv.NewReader(bytes.NewReader(data))
+	rows, err := r.ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 { // header only, no data rows
+		t.Fatalf("rows=%v, want 1 (header only)", rows)
+	}
+	if rows[0][0] != "value" {
+		t.Fatalf("header=%v, want [value]", rows[0])
 	}
 }

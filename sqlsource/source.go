@@ -53,9 +53,13 @@ func WithBatchSize(n int) Option {
 }
 
 // WithAllocator sets the memory.Allocator used to build batches. Defaults to
-// memory.DefaultAllocator.
+// memory.DefaultAllocator. A nil mem is ignored, keeping the default.
 func WithAllocator(mem memory.Allocator) Option {
-	return func(s *Source) { s.mem = mem }
+	return func(s *Source) {
+		if mem != nil {
+			s.mem = mem
+		}
+	}
 }
 
 // New creates a Source that runs query against db and emits rows matching

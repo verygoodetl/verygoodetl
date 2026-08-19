@@ -61,9 +61,14 @@ func WithLookupBatchSize(n int) LookupOption {
 }
 
 // WithLookupAllocator sets the memory.Allocator used to build result
-// batches. Defaults to memory.DefaultAllocator.
+// batches. Defaults to memory.DefaultAllocator. A nil mem is ignored,
+// keeping the default.
 func WithLookupAllocator(mem memory.Allocator) LookupOption {
-	return func(l *Lookup) { l.mem = mem }
+	return func(l *Lookup) {
+		if mem != nil {
+			l.mem = mem
+		}
+	}
 }
 
 // NewLookup creates a Lookup that runs generate(batch) against db for every

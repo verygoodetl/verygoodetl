@@ -86,7 +86,7 @@ allOrders.To(sink)
 
 ## Writing files
 
-The `filesink` subpackage provides a `Sink` that writes batches to a single Parquet, Arrow IPC, or CSV file, stored via [`gocloud.dev/blob`](https://gocloud.dev/howto/blob/) so the same code targets S3, GCS, or local disk by changing the bucket URL. It depends only on `gocloud.dev/blob`'s core types, never a cloud SDK directly. `filesink.CSV()` defaults to RFC 4180 encoding — minimal quoting, doubled-quote escaping — and derives column order and NULL handling from the schema rather than sniffing the data. Two options exist for consumers that can't process compliant CSV: `WithEscapeCharacter` (e.g. a backslash instead of a doubled quote) and `WithAlwaysEncapsulate` (quote every field, not just ones that need it) — both are opt-in and off by default.
+The `filesink` subpackage provides a `Sink` that writes batches to a single Parquet, Arrow IPC, or CSV file, stored via [`gocloud.dev/blob`](https://gocloud.dev/howto/blob/) so the same code targets S3, GCS, or local disk by changing the bucket URL and blank-importing the matching driver package (`s3blob`, `gcsblob`, `fileblob`, etc., as shown below), since `gocloud.dev/blob` drivers register themselves via blank import. It depends only on `gocloud.dev/blob`'s core types, never a cloud SDK directly. `filesink.CSV()` defaults to RFC 4180 encoding — minimal quoting, doubled-quote escaping — and derives column order and NULL handling from the schema rather than sniffing the data. Two options exist for consumers that can't process compliant CSV: `WithEscapeCharacter` (e.g. a backslash instead of a doubled quote) and `WithAlwaysEncapsulate` (quote every field, not just ones that need it) — both are opt-in and off by default.
 
 ```go
 import (

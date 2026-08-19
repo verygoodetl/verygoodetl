@@ -81,7 +81,7 @@ func (p *Pipeline) From(src Source) Stream {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.panicIfStartedLocked()
-	if isNilStage(src) {
+	if isNilValue(src) {
 		p.setErrLocked(errors.New("etl: From called with a nil Source"))
 	}
 	n := &node{id: len(p.nodes), kind: sourceNode, source: src}
@@ -95,7 +95,7 @@ func (s Stream) Process(processor Processor) Stream {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.panicIfStartedLocked()
-	if isNilStage(processor) {
+	if isNilValue(processor) {
 		p.setErrLocked(errors.New("etl: Process called with a nil Processor"))
 	}
 	n := &node{id: len(p.nodes), kind: processorNode, processor: processor}
@@ -110,7 +110,7 @@ func (p *Pipeline) Merge(processor Processor, inputs ...Stream) Stream {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.panicIfStartedLocked()
-	if isNilStage(processor) {
+	if isNilValue(processor) {
 		p.setErrLocked(errors.New("etl: Merge called with a nil Processor"))
 	}
 	n := &node{id: len(p.nodes), kind: processorNode, processor: processor}
@@ -130,7 +130,7 @@ func (s Stream) To(sink Sink) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.panicIfStartedLocked()
-	if isNilStage(sink) {
+	if isNilValue(sink) {
 		p.setErrLocked(errors.New("etl: To called with a nil Sink"))
 	}
 	n := &node{id: len(p.nodes), kind: sinkNode, sink: sink}
@@ -138,17 +138,18 @@ func (s Stream) To(sink Sink) {
 	p.connect(s.node, n)
 }
 
-// isNilStage reports whether v is either an untyped nil interface (v == nil)
+// isNilValue reports whether v is either an untyped nil interface (v == nil)
 // or a typed nil pointer wrapped in a non-nil interface, e.g. a caller
-// passing a `var s *mySource = nil` to From. In Go, an interface value is
-// == nil only when both its type and value are nil, so a plain `v == nil`
-// check misses the typed-nil case: the interface carries a concrete type
-// descriptor and a nil value pointer, so it compares != nil even though
-// calling any method on it dereferences a nil receiver.
+// passing a `var s *mySource = nil` to From, or a `var b *ArrowBatch = nil`
+// to Send. In Go, an interface value is == nil only when both its type and
+// value are nil, so a plain `v == nil` check misses the typed-nil case: the
+// interface carries a concrete type descriptor and a nil value pointer, so
+// it compares != nil even though calling any method on it dereferences a
+// nil receiver.
 //
 // The check is deliberately narrow: only Kind() == reflect.Ptr is treated as
 // possibly nil-and-invalid. A nil map, slice, chan, or func can be a
-// perfectly valid, safe stage value — for example a named slice type with a
+// perfectly valid, safe value — for example a named slice type with a
 // value-receiver method that never touches the receiver (mirroring
 // http.HandlerFunc-style adapters), which is legal and idiomatic Go. Only a
 // nil pointer is guaranteed to blow up the moment a method with a pointer
@@ -159,7 +160,7 @@ func (s Stream) To(sink Sink) {
 // invalid; it is never itself interface-kinded.) Kind is checked before
 // IsNil because IsNil panics on kinds that don't support it, e.g. a struct
 // value implementing the interface.
-func isNilStage(v any) bool {
+func isNilValue(v any) bool {
 	if v == nil {
 		return true
 	}
@@ -350,7 +351,11 @@ type nodeOutput struct {
 }
 
 func (o nodeOutput) Send(ctx context.Context, b Batch) error {
-	if b == nil {
+	// A typed nil pointer (e.g. `var b *ArrowBatch = nil`) wrapped in a
+	// non-nil Batch interface would pass b == nil and then panic on the
+	// Retain() call below; isNilValue catches that case the same way it
+	// already does for stages passed to From/Process/Merge/To.
+	if isNilValue(b) {
 		return errors.New("etl: cannot send a nil batch")
 	}
 	if ctx == nil {

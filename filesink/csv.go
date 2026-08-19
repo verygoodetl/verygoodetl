@@ -162,11 +162,16 @@ func (f csvFormat) NewWriter(schema *arrow.Schema, w io.Writer) (RecordWriter, e
 	cw.EscapeCharacter = f.escapeCharacter
 	cw.AlwaysEncapsulate = f.alwaysEncapsulate
 
+	nullString := f.nullString
+	if f.escapeFormulas {
+		nullString = escapeFormula(nullString)
+	}
+
 	return &csvRecordWriter{
 		w:              cw,
 		schema:         schema,
 		formatters:     formatters,
-		nullString:     f.nullString,
+		nullString:     nullString,
 		writeHeader:    f.writeHeader,
 		escapeFormulas: f.escapeFormulas,
 		row:            make([]string, schema.NumFields()),
@@ -189,19 +194,8 @@ func (w *csvRecordWriter) Write(rec arrow.Record) error {
 		return fmt.Errorf("filesink: csv: record schema %s does not match writer schema %s", rec.Schema(), w.schema)
 	}
 
-	if w.writeHeader && !w.headerDone {
-		header := make([]string, w.schema.NumFields())
-		for i, field := range w.schema.Fields() {
-			name := field.Name
-			if w.escapeFormulas {
-				name = escapeFormula(name)
-			}
-			header[i] = name
-		}
-		if err := w.w.Write(header); err != nil {
-			return fmt.Errorf("write header: %w", err)
-		}
-		w.headerDone = true
+	if err := w.maybeWriteHeader(); err != nil {
+		return err
 	}
 
 	cols := make([]arrow.Array, rec.NumCols())
@@ -225,11 +219,41 @@ func (w *csvRecordWriter) Write(rec arrow.Record) error {
 	return nil
 }
 
-// Close flushes any output buffered across every prior Write call. Write
-// itself deliberately does not flush per batch — csvWriter wraps a
-// bufio.Writer, so flushing here rather than after every batch lets writes
-// coalesce into fewer, larger calls to the underlying blob writer.
+// maybeWriteHeader writes the header row exactly once, the first time it's
+// called on w, if writeHeader is set. Called both from Write (so a header
+// precedes the first batch of a normal stream) and from Close (so a
+// zero-batch write against an explicit schema — see Sink.Finish — still
+// produces a header instead of silently omitting it).
+func (w *csvRecordWriter) maybeWriteHeader() error {
+	if !w.writeHeader || w.headerDone {
+		return nil
+	}
+	header := make([]string, w.schema.NumFields())
+	for i, field := range w.schema.Fields() {
+		name := field.Name
+		if w.escapeFormulas {
+			name = escapeFormula(name)
+		}
+		header[i] = name
+	}
+	if err := w.w.Write(header); err != nil {
+		return fmt.Errorf("write header: %w", err)
+	}
+	w.headerDone = true
+	return nil
+}
+
+// Close emits the header if it wasn't already written (which happens when
+// Close runs without any prior Write call, e.g. a zero-batch write against
+// an explicit schema — see Sink.Finish), then flushes any output buffered
+// across every prior Write call. Write itself deliberately does not flush
+// per batch — csvWriter wraps a bufio.Writer, so flushing here rather than
+// after every batch lets writes coalesce into fewer, larger calls to the
+// underlying blob writer.
 func (w *csvRecordWriter) Close() error {
+	if err := w.maybeWriteHeader(); err != nil {
+		return err
+	}
 	w.w.Flush()
 	return w.w.Error()
 }

@@ -37,6 +37,23 @@ func batch(t *testing.T, schema *arrow.Schema, values ...int64) etl.Batch {
 	return etl.NewBatch(intRecord(t, schema, values...))
 }
 
+// batchThenErrorSource sends one pre-built batch, then fails. It simulates
+// an upstream Source (or sibling Processor) failing partway through a
+// stream after a downstream Sink has already consumed at least one batch —
+// as opposed to errorSource (in the root package's tests), which fails
+// before sending anything.
+type batchThenErrorSource struct {
+	batch etl.Batch
+	err   error
+}
+
+func (s batchThenErrorSource) Run(ctx context.Context, out etl.Output) error {
+	if err := out.Send(ctx, s.batch); err != nil {
+		return err
+	}
+	return s.err
+}
+
 func TestSinkHappyPathParquet(t *testing.T) {
 	bucket := memblob.OpenBucket(nil)
 	defer bucket.Close()
@@ -150,6 +167,45 @@ func TestSinkZeroBatchesWithSchemaWritesEmptyFile(t *testing.T) {
 	}
 }
 
+// TestSinkZeroBatchesWithSchemaArrowIPCWritesEmptyFile locks in that
+// ArrowIPC + WithSchema + zero batches succeeds and produces a valid,
+// readable-back empty IPC file, rather than failing with the IPC writer's
+// "could not write empty file" error. That error is returned by
+// (*ipc.FileWriter).Close only when the underlying start-of-stream write
+// itself fails (e.g. a broken io.Writer) — Close starts the writer lazily if
+// it hasn't been started yet, and starting with zero records writes just the
+// schema header, which succeeds fine. So a schema-only, zero-record Finish
+// (see Finish at sink.go:80, which calls Close without ever calling Write)
+// does not hit that error path.
+func TestSinkZeroBatchesWithSchemaArrowIPCWritesEmptyFile(t *testing.T) {
+	bucket := memblob.OpenBucket(nil)
+	defer bucket.Close()
+
+	schema := fieldSchema("value")
+	p := etl.New()
+	p.From(batchesSource{}).To(filesink.New(bucket, "empty.arrow", filesink.ArrowIPC(), filesink.WithSchema(schema)))
+
+	if err := p.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := bucket.ReadAll(context.Background(), "empty.arrow")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := ipc.NewFileReader(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	if !reader.Schema().Equal(schema) {
+		t.Fatalf("schema mismatch: got %v, want %v", reader.Schema(), schema)
+	}
+	if reader.NumRecords() != 0 {
+		t.Fatalf("records=%d, want 0", reader.NumRecords())
+	}
+}
+
 func TestSinkSchemaMismatchAbortsWithoutCommitting(t *testing.T) {
 	bucket := memblob.OpenBucket(nil)
 	defer bucket.Close()
@@ -223,6 +279,44 @@ func TestSinkMidStreamFailureAbortsWithoutCommitting(t *testing.T) {
 
 	if _, err := os.Stat(filepath.Join(dir, "orders.bin")); !os.IsNotExist(err) {
 		t.Fatalf("want no file committed after abort, stat err=%v", err)
+	}
+}
+
+// TestSinkAbortCalledOnUpstreamFailureAfterConsumingABatch exercises the
+// runtime-invoked Sink.Abort path (sink.go:175), as opposed to
+// TestSinkMidStreamFailureAbortsWithoutCommitting and
+// TestSinkSchemaMismatchAbortsWithoutCommitting above, which only exercise
+// Sink's internal abort() reached from Consume's own error return
+// (sink.go:66-77). Here the failure originates upstream, in the Source, so
+// the pipeline runtime — not Consume — is what calls Abort() once it
+// determines this Sink's Finish will never run (see abortIfAborter at
+// pipeline.go:336). The Sink has already opened its blob writer and
+// consumed one batch by the time that happens, so this also verifies Abort
+// correctly cancels and discards that in-flight writer rather than just a
+// no-op stub, per the pattern in the root package's
+// TestUpstreamFailureCallsAbortOnDownstreamSink (pipeline_test.go), but with
+// a real filesink.Sink writing to a memblob bucket instead of a stub sink.
+func TestSinkAbortCalledOnUpstreamFailureAfterConsumingABatch(t *testing.T) {
+	bucket := memblob.OpenBucket(nil)
+	defer bucket.Close()
+
+	schema := fieldSchema("value")
+	wantErr := errors.New("upstream boom")
+	p := etl.New()
+	p.From(batchThenErrorSource{batch: batch(t, schema, 1), err: wantErr}).
+		To(filesink.New(bucket, "orders.parquet", filesink.Parquet()))
+
+	err := p.Run(context.Background())
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("Run error=%v, want %v", err, wantErr)
+	}
+
+	exists, err := bucket.Exists(context.Background(), "orders.parquet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exists {
+		t.Fatal("want no object committed after Abort following upstream failure")
 	}
 }
 

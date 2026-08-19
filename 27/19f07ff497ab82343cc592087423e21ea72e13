@@ -1,0 +1,21 @@
+filesink/sink.go
+  s_aa036fe16b0d6e::t_e8fc66d345ce53 14-18,22,68-85,115-119,129-134,136-149
+filesink/sink_test.go
+  s_aa036fe16b0d6e::t_813994eb5ab447 377-488
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "2719f07ff497ab82343cc592087423e21ea72e13",
+  "prompts": {},
+  "sessions": {
+    "s_aa036fe16b0d6e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "77487253-4df4-4d33-a239-2d0b31fc8db7",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    }
+  }
+}

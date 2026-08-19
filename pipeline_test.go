@@ -372,6 +372,32 @@ func TestSendTypedNilBatchReturnsErrorInsteadOfPanicking(t *testing.T) {
 	}
 }
 
+// customNilBatch is a Batch implementation other than *ArrowBatch, so a nil
+// value of it exercises nilBatch's reflection fallback rather than its
+// *ArrowBatch fast path.
+type customNilBatch struct{ *ArrowBatch }
+
+type customNilBatchSource struct{}
+
+func (customNilBatchSource) Run(ctx context.Context, out Output) error {
+	var b *customNilBatch
+	return out.Send(ctx, Batch(b))
+}
+
+func TestSendTypedNilCustomBatchReturnsErrorInsteadOfPanicking(t *testing.T) {
+	p := New()
+	p.From(customNilBatchSource{}).To(SinkFuncs{})
+
+	err := p.Run(context.Background())
+	if err == nil {
+		t.Fatal("want error for typed-nil custom Batch passed to Send, got nil")
+	}
+	const want = "etl: cannot send a nil batch"
+	if !strings.Contains(err.Error(), want) {
+		t.Fatalf("Run error = %q, want it to contain %q", err.Error(), want)
+	}
+}
+
 // TestPipelineFrozenAfterFailedValidationRun verifies that a Run which fails
 // because a builder call was given a nil stage still marks the pipeline as
 // started, consistent with the single-use contract: a later builder call

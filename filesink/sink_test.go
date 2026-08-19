@@ -282,6 +282,26 @@ func TestSinkMidStreamFailureAbortsWithoutCommitting(t *testing.T) {
 	}
 }
 
+// abortSpySink wraps a real *filesink.Sink, delegating Consume/Finish to it
+// unchanged but recording whether the runtime actually called Abort. A bare
+// bucket.Exists-after-failure check can't distinguish "Abort ran and
+// canceled the in-flight writer" from "Abort was never called, and the
+// object simply never got committed because Finish also never ran" — both
+// produce an absent object. Overriding just Abort here (Consume/Finish are
+// promoted from the embedded *filesink.Sink) lets a test assert the former
+// specifically, the same way the root package's abortableSink does for a
+// stub sink in TestUpstreamFailureCallsAbortOnDownstreamSink
+// (pipeline_test.go).
+type abortSpySink struct {
+	*filesink.Sink
+	aborted bool
+}
+
+func (s *abortSpySink) Abort() {
+	s.aborted = true
+	s.Sink.Abort()
+}
+
 // TestSinkAbortCalledOnUpstreamFailureAfterConsumingABatch exercises the
 // runtime-invoked Sink.Abort path (sink.go:175), as opposed to
 // TestSinkMidStreamFailureAbortsWithoutCommitting and
@@ -292,23 +312,26 @@ func TestSinkMidStreamFailureAbortsWithoutCommitting(t *testing.T) {
 // determines this Sink's Finish will never run (see abortIfAborter at
 // pipeline.go:336). The Sink has already opened its blob writer and
 // consumed one batch by the time that happens, so this also verifies Abort
-// correctly cancels and discards that in-flight writer rather than just a
-// no-op stub, per the pattern in the root package's
-// TestUpstreamFailureCallsAbortOnDownstreamSink (pipeline_test.go), but with
-// a real filesink.Sink writing to a memblob bucket instead of a stub sink.
+// was actually invoked (via abortSpySink) and that it results in no
+// committed object, rather than the object simply being absent because
+// Finish never ran regardless of whether Abort did anything.
 func TestSinkAbortCalledOnUpstreamFailureAfterConsumingABatch(t *testing.T) {
 	bucket := memblob.OpenBucket(nil)
 	defer bucket.Close()
 
 	schema := fieldSchema("value")
 	wantErr := errors.New("upstream boom")
+	sink := &abortSpySink{Sink: filesink.New(bucket, "orders.parquet", filesink.Parquet())}
 	p := etl.New()
-	p.From(batchThenErrorSource{batch: batch(t, schema, 1), err: wantErr}).
-		To(filesink.New(bucket, "orders.parquet", filesink.Parquet()))
+	p.From(batchThenErrorSource{batch: batch(t, schema, 1), err: wantErr}).To(sink)
 
 	err := p.Run(context.Background())
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("Run error=%v, want %v", err, wantErr)
+	}
+
+	if !sink.aborted {
+		t.Fatal("want Abort called after upstream failure skipped Finish")
 	}
 
 	exists, err := bucket.Exists(context.Background(), "orders.parquet")

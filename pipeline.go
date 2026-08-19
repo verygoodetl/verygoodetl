@@ -168,6 +168,19 @@ func isNilValue(v any) bool {
 	return rv.Kind() == reflect.Ptr && rv.IsNil()
 }
 
+// nilBatch is isNilValue specialized for Send, which runs on every batch at
+// every stage rather than once per stage registration. *ArrowBatch is the
+// only Batch implementation this package ships, so a type assertion to it
+// serves the overwhelming majority of calls at the same cost as a plain b ==
+// nil comparison, reserving isNilValue's reflection for the rare custom
+// Batch implementation.
+func nilBatch(b Batch) bool {
+	if ab, ok := b.(*ArrowBatch); ok {
+		return ab == nil
+	}
+	return isNilValue(b)
+}
+
 // setErrLocked records the first builder-time validation error for p, such as
 // a nil stage passed to From, Process, Merge, or To. Callers must hold p.mu.
 // Only the first error is kept: a nil stage recorded early in the chain is
@@ -353,9 +366,9 @@ type nodeOutput struct {
 func (o nodeOutput) Send(ctx context.Context, b Batch) error {
 	// A typed nil pointer (e.g. `var b *ArrowBatch = nil`) wrapped in a
 	// non-nil Batch interface would pass b == nil and then panic on the
-	// Retain() call below; isNilValue catches that case the same way it
-	// already does for stages passed to From/Process/Merge/To.
-	if isNilValue(b) {
+	// Retain() call below; nilBatch catches that case the same way
+	// isNilValue already does for stages passed to From/Process/Merge/To.
+	if nilBatch(b) {
 		return errors.New("etl: cannot send a nil batch")
 	}
 	if ctx == nil {

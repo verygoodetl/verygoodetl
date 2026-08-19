@@ -79,12 +79,12 @@ func TestContextCancellationCancelsGraphAndSkipsFinish(t *testing.T) {
 // unwinding on cancellation or failure"). It never checks ctx itself.
 type danglingLoopSource struct {
 	started chan struct{}
+	b       Batch
 }
 
 func (s *danglingLoopSource) Run(ctx context.Context, out Output) error {
-	b := intBatch(&testing.T{}, 1)
 	for i := 0; ; i++ {
-		if err := out.Send(ctx, b); err != nil {
+		if err := out.Send(ctx, s.b); err != nil {
 			return err
 		}
 		if i == 0 {
@@ -104,7 +104,7 @@ func (s *danglingLoopSource) Run(ctx context.Context, out Output) error {
 // return. Send must check ctx even when there are no edges to send to.
 func TestSendReportsCancellationWithNoDownstreamEdges(t *testing.T) {
 	p := New()
-	src := &danglingLoopSource{started: make(chan struct{})}
+	src := &danglingLoopSource{started: make(chan struct{}), b: intBatch(t, 1)}
 	p.From(src)
 
 	ctx, cancel := context.WithCancel(context.Background())

@@ -120,6 +120,9 @@ func (l *Lookup) Process(ctx context.Context, b etl.Batch, out etl.Output) error
 	if b.NumRows() == 0 {
 		return nil
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
 	query, args, err := l.generate(b)
 	if err != nil {

@@ -20,10 +20,10 @@ The lifecycle contract is deliberately strong:
 
 1. A `Source` stage receives no batches and only produces them; a `Processor` or `Sink` stage receives zero or more.
 2. For a `Processor` or `Sink`, all upstream edges close successfully before its `Finish` runs.
-3. A `Processor`'s or `Sink`'s `Finish` method runs exactly once; a `Source` has no `Finish` — its lifecycle ends when `Run` returns.
+3. A `Processor`'s or `Sink`'s `Finish` method runs exactly once, but only along the success path: if every upstream input completes successfully, `Finish` runs exactly once. A `Source` has no `Finish` — its lifecycle ends when `Run` returns.
 4. The runtime closes the stage's downstream edges after it returns: after `Run` returns for a `Source`, after `Finish` returns for a `Processor` or `Sink`.
 
-If any stage fails, the pipeline context is canceled before that stage's downstream edges are closed. Downstream stages therefore must not interpret an upstream failure as a successful end-of-stream and run `Finish` on partial data.
+If any stage fails, the pipeline context is canceled before that stage's downstream edges are closed. Downstream stages therefore must not interpret an upstream failure as a successful end-of-stream and run `Finish` on partial data — instead, a stage whose inputs failed or whose context was canceled first skips `Finish` entirely, and may have `Abort` called on it once instead (see `Aborter`). A stage should not treat `Finish` as its only chance to run required cleanup or commit logic; that logic must be reachable from `Abort` too, since a failed or canceled run may never reach `Finish` at all.
 
 This preserves a useful distinction between processing data as it arrives and finalizing work only when all data is known to have arrived.
 
@@ -47,7 +47,9 @@ The initial runtime favors predictable bounded memory over unbounded queues.
 
 The first stage error cancels the pipeline. External context cancellation does the same. Stages should respect their supplied context.
 
-`Run` always waits for every stage to finish unwinding, then reports whatever error a stage itself returned — never the bare fact that ctx was canceled. A stage that respects its context reports its own error once canceled (typically `ctx.Err()`), and that becomes `Run`'s result. But if every stage completes without an error, `Run` returns `nil` even when ctx was also canceled: the pipeline's work finished before the cancellation could have had any effect on it, so nothing was actually canceled.
+Once `Run` has actually started a pipeline's stages, it always waits for every one of them to finish unwinding, then reports whatever error a stage itself returned — never the bare fact that ctx was canceled. A stage that respects its context reports its own error once canceled (typically `ctx.Err()`), and that becomes `Run`'s result. But if every stage completes without an error, `Run` returns `nil` even when ctx was also canceled: the pipeline's work finished before the cancellation could have had any effect on it, so nothing was actually canceled.
+
+This "always waits" guarantee applies only once stages have actually been started. If a builder call — `From`, `Process`, `Merge`, or `To` — was given a nil stage, the pipeline records that as a validation error at build time, and `Run` returns it immediately without starting any stage goroutine: there is nothing to unwind.
 
 On cancellation, unread retained batches are drained and released so failed pipelines do not leak Arrow references.
 

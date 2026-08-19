@@ -156,6 +156,49 @@ func TestLookupSkipsZeroRowBatch(t *testing.T) {
 	}
 }
 
+// noopOutput discards every batch sent to it; used by tests that call
+// Lookup.Process directly rather than through a Pipeline, so they don't need
+// a real downstream stage.
+type noopOutput struct{}
+
+func (noopOutput) Send(context.Context, etl.Batch) error { return nil }
+
+func TestLookupSkipsGenerateWhenContextAlreadyCanceled(t *testing.T) {
+	upstreamSchema := int64Schema("id")
+	resultSchema := arrow.NewSchema([]arrow.Field{
+		{Name: "id", Type: arrow.PrimitiveTypes.Int64},
+	}, nil)
+
+	dsn := registerFixture(t, &fixture{columns: []string{"id"}})
+	db, err := sql.Open("sqlsourcefake", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	called := false
+	generate := func(b etl.Batch) (string, []any, error) {
+		called = true
+		return "SELECT id FROM shipments", []any{1}, nil
+	}
+
+	lookup, err := sqlsource.NewLookup(db, generate, resultSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err = lookup.Process(ctx, int64Batch(t, upstreamSchema, 1), noopOutput{})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Process error=%v, want context.Canceled", err)
+	}
+	if called {
+		t.Fatal("want generate not called once ctx is already canceled")
+	}
+}
+
 func TestLookupSkipsWhenGeneratorReturnsZeroArgs(t *testing.T) {
 	upstreamSchema := int64Schema("id")
 	resultSchema := arrow.NewSchema([]arrow.Field{

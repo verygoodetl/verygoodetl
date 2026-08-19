@@ -1,0 +1,30 @@
+sqlsource/lookup_test.go
+  s_36608967b2fece::t_97a1d9c3121cbe 159-201
+README.md
+  s_36608967b2fece::t_30d2da5ff2f481 140
+  s_36608967b2fece::t_0a3d77777d900c 89
+lifecycle_test.go
+  s_36608967b2fece::t_d4df34a1b1cdf9 82,87
+  s_36608967b2fece::t_0ab0c06671e627 107
+sqlsource/lookup.go
+  s_36608967b2fece::t_610d65ab4e0fb5 123-125
+ARCHITECTURE.md
+  s_36608967b2fece::t_f4826a79b15376 23,26
+  s_36608967b2fece::t_ea124681788776 50-52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "4509ab1635644b14dc35e5c8abed6ca5366fcdb6",
+  "prompts": {},
+  "sessions": {
+    "s_36608967b2fece": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5f6bd1c1-7a0d-4cb6-8573-e2861d458148",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    }
+  }
+}

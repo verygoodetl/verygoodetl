@@ -1,0 +1,23 @@
+sqlsource/source.go
+  s_74c34c7826740d::t_62619f4fe51b2c 94-96
+pipeline.go
+  s_74c34c7826740d::t_eac83409482429 175-191,196-205
+pipeline_test.go
+  s_74c34c7826740d::t_b0905b4bee896c 401-467
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "c928b22af35bac414d8fc524de5806217fb83dc4",
+  "prompts": {},
+  "sessions": {
+    "s_74c34c7826740d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1d324269-348e-4c43-86d9-037a2427ef1c",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    }
+  }
+}

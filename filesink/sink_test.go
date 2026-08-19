@@ -445,8 +445,8 @@ func TestSinkToWriterZeroBatchesNoSchemaWritesNothing(t *testing.T) {
 // TestSinkToWriterNeverClosesWriter locks in NewToWriter's documented
 // contract that the destination writer is the caller's own to manage: a
 // Sink writing Parquet (whose underlying writer closes any io.Writer it's
-// given that also implements io.Closer, per writeOnly's doc comment at
-// sink.go:139) must not let that reach the caller-supplied writer.
+// given that also implements io.Closer, per the writeOnly type's doc
+// comment) must not let that reach the caller-supplied writer.
 func TestSinkToWriterNeverClosesWriter(t *testing.T) {
 	w := &closeTrackingWriter{Writer: &bytes.Buffer{}}
 	schema := fieldSchema("value")

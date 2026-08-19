@@ -1,14 +1,14 @@
-# VeryGoodETL
+# Very Good ETL
 
-> A very good vectorized ETL and data processing framework for Go.
+![Very Good ETL logo](very-good-logo.png)
 
-VeryGoodETL is an early-stage Go library for building concurrent, batch-oriented data pipelines. Apache Arrow records are the initial execution representation, while the runtime provides the graph, lifecycle, backpressure, cancellation, and ownership semantics around them.
+Very Good ETL is a vectorized ETL and data processing framework for Go. It is used for building concurrent, batch-oriented data pipelines. Apache Arrow records are the initial execution representation, while the runtime provides the graph, lifecycle, backpressure, cancellation, and ownership semantics around them.
 
 Use our software, or do not. We are not beggars.
 
 ## Status
 
-VeryGoodETL is under active design. The initial runtime is intentionally small while its execution semantics are proven.
+Very Good ETL is under active design. The initial runtime is intentionally small while its execution semantics are proven.
 
 ## Design goals
 
@@ -18,7 +18,7 @@ VeryGoodETL is under active design. The initial runtime is intentionally small w
 - Apply bounded backpressure between stages.
 - Cancel the entire graph on the first error or context cancellation.
 - Make raw archival a natural side output so derived reporting data can be rebuilt from durable source data.
-- Remain a processing library, not a scheduler. A VeryGoodETL pipeline should be easy to compile into a normal Go binary and invoke from Sidekiq, cron, Airflow, a Kubernetes Job, or whatever already schedules work.
+- Remain a processing library, not a scheduler. A Very Good ETL pipeline should be easy to compile into a normal Go binary and invoke from Sidekiq, cron, Airflow, a Kubernetes Job, or whatever already schedules work.
 
 ## Installation
 

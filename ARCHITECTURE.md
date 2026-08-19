@@ -1,6 +1,6 @@
 # Architecture
 
-VeryGoodETL is a data-processing runtime. Scheduling and orchestration are intentionally outside the core library.
+Very Good ETL is a data-processing runtime. Scheduling and orchestration are intentionally outside the core library.
 
 ## Execution model
 
@@ -73,7 +73,7 @@ The `sqlsource` package (`sqlsource.Source`) runs a SQL query via `database/sql`
 
 ## Scheduling boundary
 
-VeryGoodETL does not decide when jobs run.
+Very Good ETL does not decide when jobs run.
 
 A pipeline should be easy to embed in a normal Go executable. That executable may be invoked by Sidekiq, cron, Airflow, Kubernetes, a CI system, or another scheduler. If scheduling support is ever added, it should be layered above the processing runtime rather than coupled to it.
 

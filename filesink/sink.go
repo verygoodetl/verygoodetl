@@ -11,12 +11,15 @@ import (
 	etl "github.com/verygoodetl/verygoodetl"
 )
 
-// Sink writes batches to a single object at key in bucket, encoded with
-// format. A Sink writes exactly one object and must be attached to exactly
-// one node in a pipeline; it is not safe to reuse across multiple streams.
+// Sink writes batches to a single destination, encoded with format: either
+// an object at key in a bucket (via New), or a caller-supplied io.Writer
+// directly (via NewToWriter). A Sink writes to that destination exactly
+// once and must be attached to exactly one node in a pipeline; it is not
+// safe to reuse across multiple streams.
 type Sink struct {
 	bucket         *blob.Bucket
 	key            string
+	w              io.Writer
 	format         Format
 	writerOpts     *blob.WriterOptions
 	explicitSchema *arrow.Schema
@@ -62,6 +65,24 @@ func New(bucket *blob.Bucket, key string, format Format, opts ...SinkOption) *Si
 	return s
 }
 
+// NewToWriter creates a Sink that writes batches to w directly using
+// format, for callers who already have a destination io.Writer — stdout,
+// an HTTP response writer, a pipe — and don't need a blob bucket at all.
+// w is never closed by the Sink, matching Format.NewWriter's own contract
+// for the io.Writer it's given; closing w, if it needs closing at all, is
+// the caller's responsibility.
+//
+// WithWriterOptions has no effect on a Sink created this way: its knobs
+// (ContentType, IfNotExist, ...) are blob-object concepts with no
+// equivalent for an arbitrary io.Writer.
+func NewToWriter(w io.Writer, format Format, opts ...SinkOption) *Sink {
+	s := &Sink{w: w, format: format}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
+}
+
 // Consume implements etl.Sink.
 func (s *Sink) Consume(ctx context.Context, b etl.Batch) error {
 	if !s.started {
@@ -91,6 +112,11 @@ func (s *Sink) Finish(ctx context.Context) error {
 		s.abort()
 		return fmt.Errorf("filesink: close format writer: %w", err)
 	}
+	if s.bw == nil {
+		// Writer-path Sink (NewToWriter): there's no blob object to commit,
+		// and w is never closed by the Sink — see NewToWriter's doc comment.
+		return nil
+	}
 	if err := s.bw.Close(); err != nil {
 		if s.cancel != nil {
 			s.cancel()
@@ -100,11 +126,27 @@ func (s *Sink) Finish(ctx context.Context) error {
 	return nil
 }
 
-// open lazily creates the blob writer and format writer for schema. The
-// context used to open the blob writer is derived from ctx so that failing
-// either writer, or cancellation of the pipeline itself, aborts the write
-// via cancel-then-Close per gocloud's documented pattern.
+// open lazily creates the format writer for schema, over either the blob
+// writer (New) or the caller-supplied io.Writer (NewToWriter). The context
+// used to open the blob writer is derived from ctx so that failing either
+// writer, or cancellation of the pipeline itself, aborts the write via
+// cancel-then-Close per gocloud's documented pattern; a writer-path Sink
+// has no analogous context-scoped resource to cancel.
 func (s *Sink) open(ctx context.Context, schema *arrow.Schema) error {
+	if s.bucket == nil {
+		// Some Format implementations (e.g. Parquet's underlying writer)
+		// close any io.Writer they're given that also implements io.Closer.
+		// writeOnly hides Close so w is never closed here, per NewToWriter's
+		// documented contract that it's the caller's own writer to manage.
+		rw, err := s.format.NewWriter(schema, writeOnly{s.w})
+		if err != nil {
+			return fmt.Errorf("filesink: new format writer: %w", err)
+		}
+		s.started = true
+		s.rw = rw
+		return nil
+	}
+
 	writeCtx, cancel := context.WithCancel(ctx)
 
 	bw, err := s.bucket.NewWriter(writeCtx, s.key, s.writerOptions())

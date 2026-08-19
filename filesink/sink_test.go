@@ -374,6 +374,118 @@ func TestSinkOverwritesByDefault(t *testing.T) {
 	}
 }
 
+// closeTrackingWriter wraps a Writer and records whether Close was called
+// on it, to verify NewToWriter's documented contract that it never closes
+// the writer it's given.
+type closeTrackingWriter struct {
+	io.Writer
+	closed bool
+}
+
+func (w *closeTrackingWriter) Close() error {
+	w.closed = true
+	return nil
+}
+
+func TestSinkToWriterHappyPathParquet(t *testing.T) {
+	var buf bytes.Buffer
+	schema := fieldSchema("value")
+	p := etl.New()
+	p.From(batchesSource{batches: []etl.Batch{
+		batch(t, schema, 1, 2, 3),
+		batch(t, schema, 4),
+	}}).To(filesink.NewToWriter(&buf, filesink.Parquet()))
+
+	if err := p.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	_, table := readParquet(t, buf.Bytes())
+	if table.NumRows() != 4 {
+		t.Fatalf("rows=%d, want 4", table.NumRows())
+	}
+	if !schemasMatch(table.Schema(), schema) {
+		t.Fatalf("schema mismatch: got %v, want %v", table.Schema(), schema)
+	}
+}
+
+func TestSinkToWriterZeroBatchesWithSchemaWritesEmptyFile(t *testing.T) {
+	var buf bytes.Buffer
+	schema := fieldSchema("value")
+	p := etl.New()
+	p.From(batchesSource{}).To(filesink.NewToWriter(&buf, filesink.Parquet(), filesink.WithSchema(schema)))
+
+	if err := p.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	_, table := readParquet(t, buf.Bytes())
+	if table.NumRows() != 0 {
+		t.Fatalf("rows=%d, want 0", table.NumRows())
+	}
+	if !schemasMatch(table.Schema(), schema) {
+		t.Fatalf("schema mismatch: got %v, want %v", table.Schema(), schema)
+	}
+}
+
+func TestSinkToWriterZeroBatchesNoSchemaWritesNothing(t *testing.T) {
+	var buf bytes.Buffer
+	p := etl.New()
+	p.From(batchesSource{}).To(filesink.NewToWriter(&buf, filesink.Parquet()))
+
+	if err := p.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if buf.Len() != 0 {
+		t.Fatalf("wrote %d bytes, want 0 for zero batches with no explicit schema", buf.Len())
+	}
+}
+
+// TestSinkToWriterNeverClosesWriter locks in NewToWriter's documented
+// contract that the destination writer is the caller's own to manage: a
+// Sink writing Parquet (whose underlying writer closes any io.Writer it's
+// given that also implements io.Closer, per writeOnly's doc comment at
+// sink.go:139) must not let that reach the caller-supplied writer.
+func TestSinkToWriterNeverClosesWriter(t *testing.T) {
+	w := &closeTrackingWriter{Writer: &bytes.Buffer{}}
+	schema := fieldSchema("value")
+	p := etl.New()
+	p.From(batchesSource{batches: []etl.Batch{batch(t, schema, 1)}}).
+		To(filesink.NewToWriter(w, filesink.Parquet()))
+
+	if err := p.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if w.closed {
+		t.Fatal("want the destination writer left open; NewToWriter must never close it")
+	}
+}
+
+// TestSinkToWriterAbortAfterUpstreamFailureIsSafe exercises the
+// runtime-invoked Abort path (see TestSinkAbortCalledOnUpstreamFailureAfterConsumingABatch
+// above, its bucket-backed counterpart) for a writer-path Sink, where
+// abort()'s bucket-specific work (canceling the write context, closing the
+// blob writer) is all nil-guarded and so should be a safe no-op rather than
+// a nil-pointer panic.
+func TestSinkToWriterAbortAfterUpstreamFailureIsSafe(t *testing.T) {
+	var buf bytes.Buffer
+	schema := fieldSchema("value")
+	wantErr := errors.New("upstream boom")
+	sink := &abortSpySink{Sink: filesink.NewToWriter(&buf, filesink.Parquet())}
+	p := etl.New()
+	p.From(batchThenErrorSource{batch: batch(t, schema, 1), err: wantErr}).To(sink)
+
+	err := p.Run(context.Background())
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("Run error=%v, want %v", err, wantErr)
+	}
+	if !sink.aborted {
+		t.Fatal("want Abort called after upstream failure skipped Finish")
+	}
+}
+
 func TestSinkWithWriterOptionsIfNotExistOptsIntoArchivalSemantics(t *testing.T) {
 	bucket := memblob.OpenBucket(nil)
 	defer bucket.Close()

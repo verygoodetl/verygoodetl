@@ -375,6 +375,22 @@ func (o nodeOutput) Send(ctx context.Context, b Batch) error {
 		ctx = o.ctx
 	}
 
+	// A stage with no downstream attachment (a dangling Process() branch, or
+	// p.From(src) with nothing ever attached to it) has zero outgoing edges,
+	// so the loop below never runs and its per-edge cancellation checks
+	// never execute. Checking here too means Send still reports
+	// cancellation even with no edges to send to, which a Source or
+	// Processor relying solely on Send's returned error to learn about
+	// cancellation (a pattern the Source/Processor docs above explicitly
+	// permit) depends on to ever stop.
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-o.ctx.Done():
+		return o.ctx.Err()
+	default:
+	}
+
 	for _, e := range o.edges {
 		b.Retain()
 		select {

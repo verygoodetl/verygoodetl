@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 )
 
@@ -80,7 +81,7 @@ func (p *Pipeline) From(src Source) Stream {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.panicIfStartedLocked()
-	if src == nil {
+	if isNilStage(src) {
 		p.setErrLocked(errors.New("etl: From called with a nil Source"))
 	}
 	n := &node{id: len(p.nodes), kind: sourceNode, source: src}
@@ -94,7 +95,7 @@ func (s Stream) Process(processor Processor) Stream {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.panicIfStartedLocked()
-	if processor == nil {
+	if isNilStage(processor) {
 		p.setErrLocked(errors.New("etl: Process called with a nil Processor"))
 	}
 	n := &node{id: len(p.nodes), kind: processorNode, processor: processor}
@@ -109,7 +110,7 @@ func (p *Pipeline) Merge(processor Processor, inputs ...Stream) Stream {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.panicIfStartedLocked()
-	if processor == nil {
+	if isNilStage(processor) {
 		p.setErrLocked(errors.New("etl: Merge called with a nil Processor"))
 	}
 	n := &node{id: len(p.nodes), kind: processorNode, processor: processor}
@@ -129,12 +130,35 @@ func (s Stream) To(sink Sink) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.panicIfStartedLocked()
-	if sink == nil {
+	if isNilStage(sink) {
 		p.setErrLocked(errors.New("etl: To called with a nil Sink"))
 	}
 	n := &node{id: len(p.nodes), kind: sinkNode, sink: sink}
 	p.nodes = append(p.nodes, n)
 	p.connect(s.node, n)
+}
+
+// isNilStage reports whether v is either an untyped nil interface (v == nil)
+// or a typed nil pointer wrapped in a non-nil interface, e.g. a caller
+// passing a `var s *mySource = nil` to From. In Go, an interface value is
+// == nil only when both its type and value are nil, so a plain `v == nil`
+// check misses the typed-nil case: the interface carries a concrete type
+// descriptor and a nil value pointer, so it compares != nil even though
+// calling any method on it dereferences a nil receiver. Only pointer-like
+// kinds support IsNil; anything else (e.g. a struct value implementing the
+// interface) is never nil and reflect.Value.IsNil would panic on it, so
+// Kind is checked first.
+func isNilStage(v any) bool {
+	if v == nil {
+		return true
+	}
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Ptr, reflect.Map, reflect.Chan, reflect.Func, reflect.Slice, reflect.Interface:
+		return rv.IsNil()
+	default:
+		return false
+	}
 }
 
 // setErrLocked records the first builder-time validation error for p, such as
@@ -179,8 +203,12 @@ func (p *Pipeline) connect(from, to *node) {
 
 // Run executes the graph until every stage completes. If a builder call such
 // as From, Process, Merge, or To was given a nil stage, Run returns that
-// error immediately without starting any stage. Run always waits for
-// every stage to finish unwinding, even after a failure or a canceled ctx,
+// error immediately without starting any stage goroutine. The pipeline is
+// still marked as run in this case, so the graph is frozen just as it would
+// be after a successful Run: further builder calls panic and a second call
+// to Run returns the "already run" error rather than re-surfacing the
+// validation error. Run always waits for every stage to finish unwinding,
+// even after a failure or a canceled ctx,
 // since stages are cooperative: only a stage's own returned error is ever
 // reported, not the mere fact that ctx was canceled. In practice this
 // distinction only matters when a stage neither checks ctx itself nor has
@@ -202,11 +230,11 @@ func (p *Pipeline) Run(ctx context.Context) error {
 		p.mu.Unlock()
 		return errors.New("etl: pipeline already run; a Pipeline may be run at most once")
 	}
+	p.started = true
 	if p.err != nil {
 		p.mu.Unlock()
 		return p.err
 	}
-	p.started = true
 	nodes := append([]*node(nil), p.nodes...)
 	p.mu.Unlock()
 

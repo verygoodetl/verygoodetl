@@ -60,6 +60,8 @@ func popPending[T any](pending map[int64][]T, id int64) (T, bool) {
 	if len(rows) == 1 {
 		delete(pending, id)
 	} else {
+		var zero T
+		rows[0] = zero // let the popped row be GC'd; rows[1:] still shares the backing array
 		pending[id] = rows[1:]
 	}
 	return row, true

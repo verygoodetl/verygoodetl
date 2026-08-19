@@ -533,6 +533,98 @@ func TestSourceTimestampFromTextDriverValue(t *testing.T) {
 	}
 }
 
+// TestSourceTimestampFromTextDriverValueWithTimeZone is a regression test
+// for a bug in the fix TestSourceTimestampFromTextDriverValue covers: when
+// the schema's TimestampType declares a non-UTC TimeZone and a driver hands
+// back a naive (no offset) text timestamp, timestampConverter.append used
+// to parse it as arrow.TimestampFromString does — assuming UTC — which
+// silently shifted the resulting instant by the zone's offset instead of
+// treating the text as a wall-clock reading in the declared zone. The
+// correct instant is what you'd get by parsing the same digits with
+// time.ParseInLocation in that zone, which is what a driver returning a
+// proper time.Time (the sibling branch, via arrow.TimestampFromTime) would
+// have produced for an equivalent value.
+func TestSourceTimestampFromTextDriverValueWithTimeZone(t *testing.T) {
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "id", Type: arrow.PrimitiveTypes.Int64},
+		{Name: "created_at", Type: &arrow.TimestampType{Unit: arrow.Microsecond, TimeZone: "America/New_York"}},
+	}, nil)
+
+	// Naive text: no embedded offset, meant to be read as wall-clock time
+	// in the schema's declared zone (America/New_York), not UTC.
+	wantTime, err := time.ParseInLocation("2006-01-02 15:04:05", "2026-07-15 12:30:00", loc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := arrow.TimestampFromTime(wantTime, arrow.Microsecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// An explicit-offset (RFC3339-ish) text value must keep its own offset
+	// rather than being forced into the schema's declared zone.
+	wantOffsetTime, err := time.Parse(time.RFC3339, "2026-07-15T12:30:00-05:00")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantOffset, err := arrow.TimestampFromTime(wantOffsetTime, arrow.Microsecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dsn := registerFixture(t, &fixture{
+		columns: []string{"id", "created_at"},
+		rows: [][]driver.Value{
+			{int64(1), []byte("2026-07-15 12:30:00")},
+			{int64(2), "2026-07-15 12:30:00"},
+			{int64(3), "2026-07-15T12:30:00-05:00"},
+		},
+	})
+	db, err := sql.Open("sqlsourcefake", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	src, err := sqlsource.New(db, "SELECT id, created_at FROM t", schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sink := runSource(t, src)
+
+	if len(sink.rows) != 3 {
+		t.Fatalf("rows=%v, want 3 rows", sink.rows)
+	}
+
+	wantByRow := []arrow.Timestamp{want, want, wantOffset}
+	for i, row := range sink.rows {
+		got, ok := row[1].(arrow.Timestamp)
+		if !ok {
+			t.Fatalf("row %d: created_at = %#v (%T), want arrow.Timestamp", i, row[1], row[1])
+		}
+		if got != wantByRow[i] {
+			t.Fatalf("row %d: created_at = %v, want %v", i, got, wantByRow[i])
+		}
+	}
+
+	// Sanity check that the naive text case and the UTC-assuming parse
+	// actually disagree, so this test would have caught the bug: NY is
+	// behind UTC, so treating "12:30:00" as UTC instead of NY wall-clock
+	// time yields a different (earlier, by the zone's offset) instant.
+	utcAssumed, err := arrow.TimestampFromString("2026-07-15 12:30:00", arrow.Microsecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if utcAssumed == want {
+		t.Fatalf("test is not discriminating: UTC-assumed parse %v unexpectedly equals zone-aware parse %v", utcAssumed, want)
+	}
+}
+
 func TestSourceZeroRows(t *testing.T) {
 	schema := int64Schema("id")
 	dsn := registerFixture(t, &fixture{

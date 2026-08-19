@@ -191,6 +191,126 @@ func TestUpstreamFailureCallsAbortOnDownstreamSink(t *testing.T) {
 	}
 }
 
+// nilPtrSource, nilPtrProcessor, and nilPtrSink are concrete pointer types
+// implementing Source, Processor, and Sink respectively, with methods that
+// dereference the receiver. A nil *T of any of these, once wrapped in its
+// interface, is not == nil (the interface carries the concrete type
+// descriptor and only a nil value pointer), so they exercise the typed-nil
+// detection in isNilStage: without it, From/Process/Merge/To would let a nil
+// *T through and its method would panic on a nil-pointer dereference the
+// first time the runtime actually invokes it.
+type nilPtrSource struct{ batches []Batch }
+
+func (s *nilPtrSource) Run(ctx context.Context, out Output) error {
+	for _, b := range s.batches {
+		if err := out.Send(ctx, b); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type nilPtrProcessor struct{ n int }
+
+func (p *nilPtrProcessor) Process(ctx context.Context, b Batch, out Output) error {
+	p.n++
+	return out.Send(ctx, b)
+}
+
+func (p *nilPtrProcessor) Finish(context.Context, Output) error { return nil }
+
+type nilPtrSink struct{ n int }
+
+func (s *nilPtrSink) Consume(context.Context, Batch) error {
+	s.n++
+	return nil
+}
+
+func (s *nilPtrSink) Finish(context.Context) error { return nil }
+
+func TestTypedNilStagesReturnErrorInsteadOfPanicking(t *testing.T) {
+	t.Run("From", func(t *testing.T) {
+		p := New()
+		var src *nilPtrSource
+		p.From(src).To(SinkFuncs{})
+
+		err := p.Run(context.Background())
+		if err == nil {
+			t.Fatal("want error for typed-nil Source, got nil")
+		}
+	})
+
+	t.Run("Process", func(t *testing.T) {
+		p := New()
+		var proc *nilPtrProcessor
+		p.From(batchesSource{batches: []Batch{intBatch(t, 1)}}).Process(proc).To(SinkFuncs{})
+
+		err := p.Run(context.Background())
+		if err == nil {
+			t.Fatal("want error for typed-nil Processor, got nil")
+		}
+	})
+
+	t.Run("Merge", func(t *testing.T) {
+		p := New()
+		left := p.From(batchesSource{batches: []Batch{intBatch(t, 1)}})
+		right := p.From(batchesSource{batches: []Batch{intBatch(t, 2)}})
+		var proc *nilPtrProcessor
+		p.Merge(proc, left, right).To(SinkFuncs{})
+
+		err := p.Run(context.Background())
+		if err == nil {
+			t.Fatal("want error for typed-nil Processor passed to Merge, got nil")
+		}
+	})
+
+	t.Run("To", func(t *testing.T) {
+		p := New()
+		var sink *nilPtrSink
+		p.From(batchesSource{batches: []Batch{intBatch(t, 1)}}).To(sink)
+
+		err := p.Run(context.Background())
+		if err == nil {
+			t.Fatal("want error for typed-nil Sink, got nil")
+		}
+	})
+}
+
+// TestPipelineFrozenAfterFailedValidationRun verifies that a Run which fails
+// because a builder call was given a nil stage still marks the pipeline as
+// started, consistent with the single-use contract: a later builder call
+// panics instead of silently mutating an already-"run" pipeline, and a
+// second Run reports "already run" rather than re-returning the original
+// validation error.
+func TestPipelineFrozenAfterFailedValidationRun(t *testing.T) {
+	p := New()
+	p.From(nil).To(SinkFuncs{})
+
+	if err := p.Run(context.Background()); err == nil {
+		t.Fatal("want error for nil Source, got nil")
+	}
+
+	t.Run("further builder call panics", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Fatal("want From to panic after a failed Run, since the pipeline is still considered started")
+			}
+		}()
+		p.From(batchesSource{})
+	})
+
+	t.Run("second Run reports already run", func(t *testing.T) {
+		err := p.Run(context.Background())
+		if err == nil {
+			t.Fatal("want error running an already-run pipeline a second time, got nil")
+		}
+		const want = "etl: pipeline already run; a Pipeline may be run at most once"
+		if err.Error() != want {
+			t.Fatalf("second Run error = %q, want %q", err.Error(), want)
+		}
+	})
+}
+
 func TestNilStagesReturnErrorInsteadOfPanicking(t *testing.T) {
 	t.Run("From", func(t *testing.T) {
 		p := New()

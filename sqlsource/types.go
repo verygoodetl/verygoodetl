@@ -38,7 +38,11 @@ func converterFor(dt arrow.DataType) (converter, error) {
 		if !ok {
 			return nil, fmt.Errorf("expected *arrow.TimestampType for %s, got %T", dt, dt)
 		}
-		return timestampConverter{dt: ts}, nil
+		loc, err := timestampTextLocation(ts.TimeZone)
+		if err != nil {
+			return nil, fmt.Errorf("load time zone %q: %w", ts.TimeZone, err)
+		}
+		return timestampConverter{dt: ts, loc: loc}, nil
 	default:
 		return nil, fmt.Errorf("unsupported type %s", dt)
 	}
@@ -193,8 +197,14 @@ func (binaryConverter) append(b array.Builder, v any) error {
 // checks each column's type against the schema field's type for equality,
 // so any dropped attribute here would panic at record-construction time
 // for any schema that declares one.
+//
+// loc is the *time.Location that dt.TimeZone resolves to, precomputed once
+// in converterFor (rather than on every append) since time.LoadLocation can
+// hit disk for tzdata lookups. It is used only for text ([]byte/string)
+// driver values that carry no explicit UTC offset of their own; see append.
 type timestampConverter struct {
-	dt *arrow.TimestampType
+	dt  *arrow.TimestampType
+	loc *time.Location
 }
 
 func (c timestampConverter) newBuilder(mem memory.Allocator) array.Builder {
@@ -207,19 +217,22 @@ func (c timestampConverter) append(b array.Builder, v any) error {
 	case nil:
 		bb.AppendNull()
 	case time.Time:
+		// x is already an absolute instant (with correct offset baked in
+		// via its own Location), so converting it doesn't need c.dt's
+		// declared TimeZone at all: Unix()/UnixNano() are zone-independent.
 		ts, err := arrow.TimestampFromTime(x, c.dt.Unit)
 		if err != nil {
 			return fmt.Errorf("convert time.Time to timestamp: %w", err)
 		}
 		bb.Append(ts)
 	case []byte:
-		ts, err := arrow.TimestampFromString(string(x), c.dt.Unit)
+		ts, err := c.parseTimestampText(string(x))
 		if err != nil {
 			return fmt.Errorf("parse timestamp from %q: %w", x, err)
 		}
 		bb.Append(ts)
 	case string:
-		ts, err := arrow.TimestampFromString(x, c.dt.Unit)
+		ts, err := c.parseTimestampText(x)
 		if err != nil {
 			return fmt.Errorf("parse timestamp from %q: %w", x, err)
 		}
@@ -228,4 +241,85 @@ func (c timestampConverter) append(b array.Builder, v any) error {
 		return fmt.Errorf("cannot convert %T to time.Time", v)
 	}
 	return nil
+}
+
+// parseTimestampText parses a database/sql driver's text timestamp value
+// (some drivers scan TIMESTAMP columns as []byte/string rather than
+// time.Time) into an arrow.Timestamp for c.dt.Unit, honoring c.dt.TimeZone
+// for values that carry no explicit UTC offset of their own.
+//
+// arrow.TimestampFromString always parses naive text as if it were UTC,
+// silently ignoring any TimeZone the caller's schema declares. That's fine
+// when the schema's TimeZone is empty or UTC (naive text has always been
+// treated as UTC here, and this preserves that), but it is wrong for a
+// schema field like TimestampType{TimeZone: "America/New_York"}: a driver
+// value like "2024-01-15 10:30:00" is meant to be a wall-clock reading in
+// that zone, not in UTC, and parsing it as UTC would shift the resulting
+// instant by the zone's offset relative to what the time.Time branch above
+// produces for an equivalent value. Text that does carry its own offset
+// (e.g. RFC3339 "2024-01-15T10:30:00-05:00") is unambiguous regardless of
+// the schema's declared zone, so that case is left to
+// arrow.TimestampFromString unchanged.
+func (c timestampConverter) parseTimestampText(s string) (arrow.Timestamp, error) {
+	ts, hadZone, err := arrow.TimestampFromStringInLocation(s, c.dt.Unit, time.UTC)
+	if err != nil {
+		return 0, err
+	}
+	if hadZone || c.loc == time.UTC {
+		return ts, nil
+	}
+
+	// s is naive and the schema declares a non-UTC zone: re-parse its
+	// wall-clock digits as a reading in that zone instead of in UTC.
+	layout, err := timestampTextLayout(s)
+	if err != nil {
+		return 0, err
+	}
+	t, err := time.ParseInLocation(layout, s, c.loc)
+	if err != nil {
+		return 0, fmt.Errorf("parse %q in %s: %w", s, c.loc, err)
+	}
+	return arrow.TimestampFromTime(t, c.dt.Unit)
+}
+
+// timestampTextLocation resolves the *time.Location that naive
+// ([]byte/string) timestamp text should be interpreted in for a schema
+// field whose TimestampType declares TimeZone tz. An empty TimeZone means
+// the schema declares no zone at all, so naive text is treated as UTC,
+// matching arrow.TimestampFromString's own behavior and this package's
+// historical behavior before per-zone text parsing existed.
+func timestampTextLocation(tz string) (*time.Location, error) {
+	if tz == "" {
+		return time.UTC, nil
+	}
+	return time.LoadLocation(tz)
+}
+
+// timestampTextLayout returns the time.Parse layout matching one of the
+// naive (no zone suffix) forms arrow.TimestampFromString documents:
+//
+//	YYYY-MM-DD
+//	YYYY-MM-DD[T]HH
+//	YYYY-MM-DD[T]HH:MM
+//	YYYY-MM-DD[T]HH:MM:SS[.zzzzzzzzz]
+//
+// where [T] is either "T" or a space. It mirrors the length-based format
+// selection arrow.TimestampFromStringInLocation uses internally; callers
+// must only pass s once TimestampFromStringInLocation has confirmed s
+// parses and carries no explicit zone suffix, since this helper does not
+// itself validate or strip one.
+func timestampTextLayout(s string) (string, error) {
+	layout := "2006-01-02"
+	switch {
+	case len(s) == 10:
+		return layout, nil
+	case len(s) == 13:
+		return layout + string(s[10]) + "15", nil
+	case len(s) == 16:
+		return layout + string(s[10]) + "15:04", nil
+	case len(s) >= 19:
+		return layout + string(s[10]) + "15:04:05.999999999", nil
+	default:
+		return "", fmt.Errorf("invalid timestamp string %q", s)
+	}
 }

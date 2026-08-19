@@ -1,0 +1,36 @@
+sqlsource/types.go
+  s_4a5e8f8c25f3c2::t_33cf08e0167a26 325
+  s_4a5e8f8c25f3c2::t_6cc1253848c163 41-45
+  s_4a5e8f8c25f3c2::t_99232eaca13b12 200-204,206-207,220-222,229,235,245-324
+pipeline.go
+  s_4a5e8f8c25f3c2::t_9658e15374c5e0 98
+  s_4a5e8f8c25f3c2::t_4d504e5af656de 206-211
+  s_4a5e8f8c25f3c2::t_1440ea90e17095 233
+  s_4a5e8f8c25f3c2::t_881c5e5e23f842 141-163
+  s_4a5e8f8c25f3c2::t_0be8a03a8b1e8a 7
+  s_4a5e8f8c25f3c2::t_3576e666c6249b 133
+  s_4a5e8f8c25f3c2::t_cb7e37fb6d1151 113
+  s_4a5e8f8c25f3c2::t_023f82c4e217d0 84
+pipeline_test.go
+  s_4a5e8f8c25f3c2::t_3e923fba1d20c0 194-313
+examples/sql-lookup-merge/main.go
+  s_4a5e8f8c25f3c2::t_393914d1092093 63-64
+sqlsource/source_test.go
+  s_4a5e8f8c25f3c2::t_d8d4bdbc0d7fe4 536-627
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "66bc13df419066dcb023dbfb4b85a4c07c7d75b6",
+  "prompts": {},
+  "sessions": {
+    "s_4a5e8f8c25f3c2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a7fbb5f3-1a79-469c-a25f-00e15d4d0737",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    }
+  }
+}

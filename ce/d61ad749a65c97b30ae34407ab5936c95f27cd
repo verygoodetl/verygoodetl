@@ -1,0 +1,23 @@
+README.md
+  s_aa036fe16b0d6e::t_9d05704100d9a0 114-120
+  s_aa036fe16b0d6e::t_612855e668d5b2 89
+  s_aa036fe16b0d6e::t_893fc8e632bc1c 121
+ARCHITECTURE.md
+  s_aa036fe16b0d6e::t_a5bd9a80b3fdb5 24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "ced61ad749a65c97b30ae34407ab5936c95f27cd",
+  "prompts": {},
+  "sessions": {
+    "s_aa036fe16b0d6e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "77487253-4df4-4d33-a239-2d0b31fc8db7",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    }
+  }
+}

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	_ "time/tzdata" // TestSourceTimestampFromTextDriverValueWithTimeZone resolves "America/New_York"; embed tzdata so it passes without relying on the host's zoneinfo database.
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/memory"

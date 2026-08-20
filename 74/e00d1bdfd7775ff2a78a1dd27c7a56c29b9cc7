@@ -1,0 +1,33 @@
+sqlsource/source.go
+  s_aa036fe16b0d6e::t_577f78d226cc59 98
+  s_aa036fe16b0d6e::t_8639801ed0e6be 112-114,116-126,129
+  s_aa036fe16b0d6e::t_8f96b8350dde26 57-60
+  s_aa036fe16b0d6e::t_86dc3a36fe9e0e 63
+sqlsource/source_test.go
+  s_aa036fe16b0d6e::t_ecfc7f0a0dfd4a 15
+  s_aa036fe16b0d6e::t_5d25e9410acf40 329,332-358
+  s_aa036fe16b0d6e::t_b979921f11850b 330-331
+sqlsource/lookup_test.go
+  s_aa036fe16b0d6e::t_5980b45c77782f 344,347-388
+  s_aa036fe16b0d6e::t_409819266458e4 345-346
+sqlsource/lookup.go
+  s_aa036fe16b0d6e::t_6c8dfbcda536c3 110
+  s_aa036fe16b0d6e::t_2b5164e9cadb8d 64-68
+  s_aa036fe16b0d6e::t_06c30388d1063e 71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "74e00d1bdfd7775ff2a78a1dd27c7a56c29b9cc7",
+  "prompts": {},
+  "sessions": {
+    "s_aa036fe16b0d6e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "77487253-4df4-4d33-a239-2d0b31fc8db7",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    }
+  }
+}

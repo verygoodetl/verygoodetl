@@ -104,6 +104,9 @@ func NewLookup(db *sql.DB, generate QueryGenerator, schema *arrow.Schema, opts .
 
 	converters := make([]converter, schema.NumFields())
 	for i, f := range schema.Fields() {
+		if nilDataType(f.Type) {
+			return nil, fmt.Errorf("sqlsource: field %d (%s): nil type", i, f.Name)
+		}
 		c, err := converterFor(f.Type)
 		if err != nil {
 			return nil, fmt.Errorf("sqlsource: field %d (%s): %w", i, f.Name, err)

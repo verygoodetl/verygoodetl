@@ -380,3 +380,24 @@ func TestLookupUnsupportedSchemaType(t *testing.T) {
 		t.Fatal("want error constructing Lookup with an unsupported schema field type")
 	}
 }
+
+// TestLookupNilTypedSchemaField is a regression test: arrow.NewSchema only
+// checks field.Type == nil, so it does not reject a typed-nil DataType like
+// (*arrow.TimestampType)(nil). NewLookup must catch that case itself instead
+// of panicking later in converterFor.
+func TestLookupNilTypedSchemaField(t *testing.T) {
+	resultSchema := arrow.NewSchema([]arrow.Field{
+		{Name: "id", Type: (*arrow.TimestampType)(nil)},
+	}, nil)
+
+	db, err := sql.Open("sqlsourcefake", "unused")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	generate := func(b etl.Batch) (string, []any, error) { return "", nil, nil }
+	if _, err := sqlsource.NewLookup(db, generate, resultSchema); err == nil {
+		t.Fatal("want error constructing Lookup with a typed-nil schema field type")
+	}
+}

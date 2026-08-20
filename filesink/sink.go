@@ -86,7 +86,11 @@ func NewToWriter(w io.Writer, format Format, opts ...SinkOption) *Sink {
 // Consume implements etl.Sink.
 func (s *Sink) Consume(ctx context.Context, b etl.Batch) error {
 	if !s.started {
-		if err := s.open(ctx, b.Schema()); err != nil {
+		schema := b.Schema()
+		if schema == nil {
+			return fmt.Errorf("filesink: batch has a nil schema")
+		}
+		if err := s.open(ctx, schema); err != nil {
 			return err
 		}
 	}

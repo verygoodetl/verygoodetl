@@ -175,7 +175,7 @@ func TestSinkZeroBatchesWithSchemaWritesEmptyFile(t *testing.T) {
 // itself fails (e.g. a broken io.Writer) — Close starts the writer lazily if
 // it hasn't been started yet, and starting with zero records writes just the
 // schema header, which succeeds fine. So a schema-only, zero-record Finish
-// (see Finish at sink.go:80, which calls Close without ever calling Write)
+// (see Sink.Finish, which calls Close without ever calling Write)
 // does not hit that error path.
 func TestSinkZeroBatchesWithSchemaArrowIPCWritesEmptyFile(t *testing.T) {
 	bucket := memblob.OpenBucket(nil)
@@ -203,6 +203,37 @@ func TestSinkZeroBatchesWithSchemaArrowIPCWritesEmptyFile(t *testing.T) {
 	}
 	if reader.NumRecords() != 0 {
 		t.Fatalf("records=%d, want 0", reader.NumRecords())
+	}
+}
+
+// nilSchemaBatch is an etl.Batch whose Schema method returns nil. It's a
+// plain, non-nil struct value — unlike a nil-backed pointer/map/slice/
+// func/chan Batch, which the pipeline runtime itself now rejects — so it
+// reaches a Sink's Consume unfiltered, exercising this package's own
+// handling of a schema-less batch specifically.
+type nilSchemaBatch struct{}
+
+func (nilSchemaBatch) Schema() *arrow.Schema { return nil }
+func (nilSchemaBatch) NumRows() int64        { return 0 }
+func (nilSchemaBatch) Record() arrow.Record  { return nil }
+func (nilSchemaBatch) Retain()               {}
+func (nilSchemaBatch) Release()              {}
+
+// TestSinkConsumeNilSchemaBatchReturnsError is a regression test: Consume
+// used to pass b.Schema() straight into open, which hands it to
+// Format.NewWriter — every current Format implementation calls a method on
+// the schema (e.g. NumFields) without a nil check, so a nil schema panicked
+// instead of failing the pipeline with an ordinary error.
+func TestSinkConsumeNilSchemaBatchReturnsError(t *testing.T) {
+	bucket := memblob.OpenBucket(nil)
+	defer bucket.Close()
+
+	p := etl.New()
+	p.From(batchesSource{batches: []etl.Batch{nilSchemaBatch{}}}).
+		To(filesink.New(bucket, "orders.parquet", filesink.Parquet()))
+
+	if err := p.Run(context.Background()); err == nil {
+		t.Fatal("want error for a batch with a nil schema")
 	}
 }
 
@@ -303,14 +334,14 @@ func (s *abortSpySink) Abort() {
 }
 
 // TestSinkAbortCalledOnUpstreamFailureAfterConsumingABatch exercises the
-// runtime-invoked Sink.Abort path (sink.go:175), as opposed to
+// runtime-invoked Sink.Abort method, as opposed to
 // TestSinkMidStreamFailureAbortsWithoutCommitting and
 // TestSinkSchemaMismatchAbortsWithoutCommitting above, which only exercise
-// Sink's internal abort() reached from Consume's own error return
-// (sink.go:66-77). Here the failure originates upstream, in the Source, so
-// the pipeline runtime — not Consume — is what calls Abort() once it
-// determines this Sink's Finish will never run (see abortIfAborter at
-// pipeline.go:336). The Sink has already opened its blob writer and
+// Sink's internal abort() reached from Consume's own error return. Here
+// the failure originates upstream, in the Source, so the pipeline runtime
+// — not Consume — is what calls Abort() once it determines this Sink's
+// Finish will never run (see the pipeline runtime's abortIfAborter
+// helper). The Sink has already opened its blob writer and
 // consumed one batch by the time that happens, so this also verifies Abort
 // was actually invoked (via abortSpySink) and that it results in no
 // committed object, rather than the object simply being absent because

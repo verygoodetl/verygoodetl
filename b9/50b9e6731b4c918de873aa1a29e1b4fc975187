@@ -1,0 +1,21 @@
+sqlsource/lookup.go
+  s_74c34c7826740d::t_3ff318d582eeed 107-109
+sqlsource/lookup_test.go
+  s_74c34c7826740d::t_aedf65520a2bc5 383-403
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "b950b9e6731b4c918de873aa1a29e1b4fc975187",
+  "prompts": {},
+  "sessions": {
+    "s_74c34c7826740d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1d324269-348e-4c43-86d9-037a2427ef1c",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    }
+  }
+}

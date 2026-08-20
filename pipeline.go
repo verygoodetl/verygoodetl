@@ -171,8 +171,9 @@ func isNilValue(v any) bool {
 // nilBatch is isNilValue specialized for Send, which runs on every batch at
 // every stage rather than once per stage registration. *ArrowBatch is the
 // only Batch implementation this package ships, so a type assertion to it
-// serves the overwhelming majority of calls at the same cost as a plain b ==
-// nil comparison, reserving reflection for the rare custom Batch
+// serves the overwhelming majority of calls with only the cheap ab == nil
+// check plus one isNilValue call on the wrapped record, reserving the
+// heavier reflect.ValueOf(b) fallback below for the rare custom Batch
 // implementation.
 //
 // Unlike isNilValue, nilBatch rejects every nil-capable kind (map, slice,
@@ -191,7 +192,13 @@ func isNilValue(v any) bool {
 // check exists to catch.
 func nilBatch(b Batch) bool {
 	if ab, ok := b.(*ArrowBatch); ok {
-		return ab == nil
+		// ab.record is only read once ab itself is known non-nil: arrow.Record
+		// is an interface, so a caller doing NewBatch((*array.RecordBatch)(nil))
+		// (or any other typed-nil concrete record) produces a non-nil ab whose
+		// record field is != nil by pointer-equality but panics the moment
+		// Retain/Release/Schema/NumRows touches it. isNilValue already handles
+		// exactly this shape for Source/Processor/Sink.
+		return ab == nil || isNilValue(ab.record)
 	}
 	if b == nil {
 		return true
@@ -245,8 +252,12 @@ func (p *Pipeline) connect(from, to *node) {
 	to.incoming = append(to.incoming, e)
 }
 
-// Run executes the graph until every stage completes. If a builder call such
-// as From, Process, Merge, or To was given a nil stage, Run returns that
+// Run executes the graph until every stage completes. A nil ctx is rejected
+// immediately with an error: context.WithCancel(ctx) would otherwise panic
+// before any stage goroutine starts, and unlike the nil-stage validation
+// below this check happens before the pipeline is marked started, since a
+// nil ctx is a caller mistake independent of anything already recorded on p.
+// If a builder call such as From, Process, Merge, or To was given a nil stage, Run returns that
 // error immediately without starting any stage goroutine. The pipeline is
 // still marked as run in this case, so the graph is frozen just as it would
 // be after a successful Run: further builder calls panic and a second call
@@ -269,6 +280,10 @@ func (p *Pipeline) connect(from, to *node) {
 // closed channels. Calling Run again returns an error instead of reusing
 // those closed edges.
 func (p *Pipeline) Run(ctx context.Context) error {
+	if ctx == nil {
+		return errors.New("etl: Run called with a nil context.Context")
+	}
+
 	p.mu.Lock()
 	if p.started {
 		p.mu.Unlock()

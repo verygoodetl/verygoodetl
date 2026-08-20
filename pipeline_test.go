@@ -253,6 +253,23 @@ func TestRunTwiceReturnsErrorInsteadOfReusingClosedEdges(t *testing.T) {
 	}
 }
 
+// TestRunNilContextReturnsErrorInsteadOfPanicking is a regression test:
+// context.WithCancel(nil) panics, so Run must reject a nil ctx itself before
+// reaching that call rather than letting the panic surface to the caller.
+func TestRunNilContextReturnsErrorInsteadOfPanicking(t *testing.T) {
+	p := New()
+	p.From(batchesSource{batches: []Batch{intBatch(t, 1)}}).To(SinkFuncs{})
+
+	err := p.Run(nil)
+	if err == nil {
+		t.Fatal("want error for a nil context.Context, got nil")
+	}
+	const want = "etl: Run called with a nil context.Context"
+	if !strings.Contains(err.Error(), want) {
+		t.Fatalf("Run error = %q, want it to contain %q", err.Error(), want)
+	}
+}
+
 func TestGraphMutationAfterRunPanics(t *testing.T) {
 	p := New()
 	p.From(batchesSource{batches: []Batch{intBatch(t, 1)}}).To(SinkFuncs{})
@@ -460,6 +477,31 @@ func TestSendTypedNilBatchReturnsErrorInsteadOfPanicking(t *testing.T) {
 	err := p.Run(context.Background())
 	if err == nil {
 		t.Fatal("want error for typed-nil Batch passed to Send, got nil")
+	}
+	const want = "etl: cannot send a nil batch"
+	if !strings.Contains(err.Error(), want) {
+		t.Fatalf("Run error = %q, want it to contain %q", err.Error(), want)
+	}
+}
+
+// nilRecordBatchSource sends a *ArrowBatch that is itself non-nil but wraps
+// a nil arrow.Record, e.g. via NewBatch(nil). Unlike nilBatchSource's typed-
+// nil *ArrowBatch pointer, `ab == nil` is false here, so this exercises
+// nilBatch's check of the wrapped record rather than the ArrowBatch pointer
+// itself.
+type nilRecordBatchSource struct{}
+
+func (nilRecordBatchSource) Run(ctx context.Context, out Output) error {
+	return out.Send(ctx, NewBatch(nil))
+}
+
+func TestSendArrowBatchWrappingNilRecordReturnsErrorInsteadOfPanicking(t *testing.T) {
+	p := New()
+	p.From(nilRecordBatchSource{}).To(SinkFuncs{})
+
+	err := p.Run(context.Background())
+	if err == nil {
+		t.Fatal("want error for a non-nil *ArrowBatch wrapping a nil arrow.Record, got nil")
 	}
 	const want = "etl: cannot send a nil batch"
 	if !strings.Contains(err.Error(), want) {

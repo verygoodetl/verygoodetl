@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"reflect"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/memory"
@@ -91,7 +92,7 @@ func New(db *sql.DB, query string, schema *arrow.Schema, opts ...Option) (*Sourc
 
 	converters := make([]converter, schema.NumFields())
 	for i, f := range schema.Fields() {
-		if f.Type == nil {
+		if nilDataType(f.Type) {
 			return nil, fmt.Errorf("sqlsource: field %d (%s): nil type", i, f.Name)
 		}
 		c, err := converterFor(f.Type)
@@ -103,6 +104,25 @@ func New(db *sql.DB, query string, schema *arrow.Schema, opts ...Option) (*Sourc
 	s.converters = converters
 
 	return s, nil
+}
+
+// nilDataType reports whether dt is either an untyped nil interface (dt ==
+// nil) or a typed nil pointer wrapped in a non-nil interface, e.g. a caller
+// building arrow.Field{Type: (*arrow.TimestampType)(nil)} — which
+// arrow.NewSchema itself does not reject, since it only checks field.Type ==
+// nil too. A plain dt == nil check misses that case: the interface carries a
+// concrete type descriptor and a nil value pointer, so it compares != nil
+// even though dt.ID() type-asserting back to *arrow.TimestampType (or
+// similar) succeeds with a nil receiver, and converterFor then panics on the
+// first field access. arrow-go's DataType implementations are essentially
+// all pointer types, so checking Kind() == reflect.Ptr covers them; Kind is
+// checked before IsNil because IsNil panics on kinds that don't support it.
+func nilDataType(dt arrow.DataType) bool {
+	if dt == nil {
+		return true
+	}
+	rv := reflect.ValueOf(dt)
+	return rv.Kind() == reflect.Ptr && rv.IsNil()
 }
 
 // Run implements etl.Source.

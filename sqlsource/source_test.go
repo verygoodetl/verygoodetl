@@ -474,6 +474,25 @@ func TestSourceUnsupportedSchemaType(t *testing.T) {
 	}
 }
 
+// TestSourceNilTypedSchemaField is a regression test: arrow.NewSchema only
+// checks field.Type == nil, so it does not reject a typed-nil DataType like
+// (*arrow.TimestampType)(nil) wrapped in the arrow.DataType interface. New
+// must catch that case itself instead of panicking later in converterFor.
+func TestSourceNilTypedSchemaField(t *testing.T) {
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "id", Type: (*arrow.TimestampType)(nil)},
+	}, nil)
+	db, err := sql.Open("sqlsourcefake", "unused")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	if _, err := sqlsource.New(db, "SELECT id FROM t", schema); err == nil {
+		t.Fatal("want error constructing Source with a typed-nil schema field type")
+	}
+}
+
 func TestSourceColumnCountMismatch(t *testing.T) {
 	schema := int64Schema("id")
 	dsn := registerFixture(t, &fixture{

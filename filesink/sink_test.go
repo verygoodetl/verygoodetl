@@ -237,6 +237,62 @@ func TestSinkConsumeNilSchemaBatchReturnsError(t *testing.T) {
 	}
 }
 
+// TestSinkConsumeSecondBatchNilSchemaReturnsError is a regression test: the
+// nil-schema check used to live inside Consume's `if !s.started` branch, so
+// it only ran while opening the format writer on the first batch. A batch
+// with a nil schema arriving on a later call skipped the check entirely and
+// went straight to rw.Write(b.Record()), which panicked the same way a nil
+// schema on the first batch used to (see TestSinkConsumeNilSchemaBatchReturnsError
+// above) since b.Record() is also nil on a nilSchemaBatch.
+func TestSinkConsumeSecondBatchNilSchemaReturnsError(t *testing.T) {
+	bucket := memblob.OpenBucket(nil)
+	defer bucket.Close()
+
+	schema := fieldSchema("value")
+	p := etl.New()
+	p.From(batchesSource{batches: []etl.Batch{
+		batch(t, schema, 1),
+		nilSchemaBatch{},
+	}}).To(filesink.New(bucket, "orders.parquet", filesink.Parquet()))
+
+	if err := p.Run(context.Background()); err == nil {
+		t.Fatal("want error for a second batch with a nil schema")
+	}
+}
+
+// TestSinkNewNilBucketReturnsErrorInsteadOfPanicking is a regression test:
+// open used to decide bucket-backed vs. writer-backed by checking
+// s.bucket == nil, so New(nil, ...) — a plain caller mistake, not a request
+// to go through NewToWriter — was misclassified as writer-backed and handed
+// a nil s.w to the format writer, panicking deep inside it instead of
+// failing with an ordinary error.
+func TestSinkNewNilBucketReturnsErrorInsteadOfPanicking(t *testing.T) {
+	schema := fieldSchema("value")
+	p := etl.New()
+	p.From(batchesSource{batches: []etl.Batch{batch(t, schema, 1)}}).
+		To(filesink.New(nil, "orders.parquet", filesink.Parquet()))
+
+	if err := p.Run(context.Background()); err == nil {
+		t.Fatal("want error for a nil bucket passed to New")
+	}
+}
+
+// TestSinkNewToWriterNilWriterReturnsErrorInsteadOfPanicking mirrors
+// TestSinkNewNilBucketReturnsErrorInsteadOfPanicking for the other
+// construction mode: NewToWriter(nil, ...) must fail with an ordinary error
+// rather than panicking when the format writer tries to use the nil
+// io.Writer.
+func TestSinkNewToWriterNilWriterReturnsErrorInsteadOfPanicking(t *testing.T) {
+	schema := fieldSchema("value")
+	p := etl.New()
+	p.From(batchesSource{batches: []etl.Batch{batch(t, schema, 1)}}).
+		To(filesink.NewToWriter(nil, filesink.Parquet()))
+
+	if err := p.Run(context.Background()); err == nil {
+		t.Fatal("want error for a nil writer passed to NewToWriter")
+	}
+}
+
 func TestSinkSchemaMismatchAbortsWithoutCommitting(t *testing.T) {
 	bucket := memblob.OpenBucket(nil)
 	defer bucket.Close()

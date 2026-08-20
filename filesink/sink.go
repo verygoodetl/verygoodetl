@@ -20,9 +20,11 @@ type Sink struct {
 	bucket         *blob.Bucket
 	key            string
 	w              io.Writer
+	writerBacked   bool // set once at construction: true for NewToWriter, false for New
 	format         Format
 	writerOpts     *blob.WriterOptions
 	explicitSchema *arrow.Schema
+	constructErr   error // set at construction if bucket/w was nil for the requested mode
 
 	started bool
 	bw      *blob.Writer
@@ -55,10 +57,16 @@ func WithSchema(schema *arrow.Schema) SinkOption {
 	return func(s *Sink) { s.explicitSchema = schema }
 }
 
-// New creates a Sink that writes batches to key in bucket using
-// format.
+// New creates a Sink that writes batches to key in bucket using format. A
+// nil bucket is a construction error, surfaced from the first Consume or
+// Finish call rather than returned here, so New can keep composing directly
+// into a pipeline (e.g. p.To(filesink.New(...))); callers who already have
+// an io.Writer instead of a bucket should use NewToWriter.
 func New(bucket *blob.Bucket, key string, format Format, opts ...SinkOption) *Sink {
 	s := &Sink{bucket: bucket, key: key, format: format}
+	if bucket == nil {
+		s.constructErr = fmt.Errorf("filesink: New: nil bucket (use NewToWriter for a caller-supplied io.Writer)")
+	}
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -76,7 +84,10 @@ func New(bucket *blob.Bucket, key string, format Format, opts ...SinkOption) *Si
 // (ContentType, IfNotExist, ...) are blob-object concepts with no
 // equivalent for an arbitrary io.Writer.
 func NewToWriter(w io.Writer, format Format, opts ...SinkOption) *Sink {
-	s := &Sink{w: w, format: format}
+	s := &Sink{w: w, format: format, writerBacked: true}
+	if w == nil {
+		s.constructErr = fmt.Errorf("filesink: NewToWriter: nil writer")
+	}
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -85,11 +96,17 @@ func NewToWriter(w io.Writer, format Format, opts ...SinkOption) *Sink {
 
 // Consume implements etl.Sink.
 func (s *Sink) Consume(ctx context.Context, b etl.Batch) error {
+	// Checked unconditionally, not just while opening on the first call:
+	// b.Record() is handed straight to the format writer below regardless
+	// of s.started, and every current Format implementation dereferences
+	// its record argument (e.g. NumRows) with no nil check, so a nil
+	// schema arriving on a later batch would panic instead of failing the
+	// pipeline with an ordinary error, same as it would on the first.
+	schema := b.Schema()
+	if schema == nil {
+		return fmt.Errorf("filesink: batch has a nil schema")
+	}
 	if !s.started {
-		schema := b.Schema()
-		if schema == nil {
-			return fmt.Errorf("filesink: batch has a nil schema")
-		}
 		if err := s.open(ctx, schema); err != nil {
 			return err
 		}
@@ -131,13 +148,21 @@ func (s *Sink) Finish(ctx context.Context) error {
 }
 
 // open lazily creates the format writer for schema, over either the blob
-// writer (New) or the caller-supplied io.Writer (NewToWriter). The context
-// used to open the blob writer is derived from ctx so that failing either
-// writer, or cancellation of the pipeline itself, aborts the write via
-// cancel-then-Close per gocloud's documented pattern; a writer-path Sink
-// has no analogous context-scoped resource to cancel.
+// writer (New) or the caller-supplied io.Writer (NewToWriter). Which one is
+// used is decided by s.writerBacked, set once at construction time by New
+// vs. NewToWriter — not inferred here from whether s.bucket happens to be
+// nil, which would misclassify a Sink constructed via New(nil, ...) as
+// writer-backed and hand a nil s.w to the format writer instead of failing
+// clearly. The context used to open the blob writer is derived from ctx so
+// that failing either writer, or cancellation of the pipeline itself,
+// aborts the write via cancel-then-Close per gocloud's documented pattern;
+// a writer-path Sink has no analogous context-scoped resource to cancel.
 func (s *Sink) open(ctx context.Context, schema *arrow.Schema) error {
-	if s.bucket == nil {
+	if s.constructErr != nil {
+		return s.constructErr
+	}
+
+	if s.writerBacked {
 		// Some Format implementations (e.g. Parquet's underlying writer)
 		// close any io.Writer they're given that also implements io.Closer.
 		// writeOnly hides Close so w is never closed here, per NewToWriter's

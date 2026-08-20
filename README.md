@@ -86,7 +86,7 @@ allOrders.To(sink)
 
 ## Writing files
 
-The `filesink` subpackage provides a `Sink` that writes batches to a single Parquet, Arrow IPC, or CSV file, stored via [`gocloud.dev/blob`](https://gocloud.dev/howto/blob/) so the same code targets S3, GCS, or local disk by changing the bucket URL and blank-importing the matching driver package (`s3blob`, `gcsblob`, `fileblob`, etc., as shown below), since `gocloud.dev/blob` drivers register themselves via blank import. It depends only on `gocloud.dev/blob`'s core types, never a cloud SDK directly. `filesink.CSV()` defaults to RFC 4180 encoding — minimal quoting, doubled-quote escaping — and derives column order and NULL handling from the schema rather than sniffing the data. Two options exist for consumers that can't process compliant CSV: `WithEscapeCharacter` (e.g. a backslash instead of a doubled quote) and `WithAlwaysEncapsulate` (quote every field, not just ones that need it) — both are opt-in and off by default. A third option, `WithEscapeFormulas`, defends against formula injection: RFC 4180 quoting only controls how a CSV *parser* reads a field, not how a spreadsheet application (Excel, LibreOffice, Google Sheets) then interprets a cell starting with `=`, `+`, `-`, `@`, a tab, or a carriage return once the file is opened. Opt in to `WithEscapeFormulas` whenever CSV output containing untrusted or user-supplied text might be opened directly in spreadsheet software; it's off by default because prepending an escape character changes the field's exact byte content, which is wrong for a machine-to-machine consumer expecting the source value verbatim.
+The `filesink` subpackage provides a `Sink` that writes batches to a single Parquet, Arrow IPC, or CSV file. `filesink.New` stores it via [`gocloud.dev/blob`](https://gocloud.dev/howto/blob/) so the same code targets S3, GCS, or local disk by changing the bucket URL and blank-importing the matching driver package (`s3blob`, `gcsblob`, `fileblob`, etc., as shown below), since `gocloud.dev/blob` drivers register themselves via blank import. It depends only on `gocloud.dev/blob`'s core types, never a cloud SDK directly. For a destination that isn't a blob bucket at all — stdout, an HTTP response writer, a pipe — `filesink.NewToWriter` writes to a caller-supplied `io.Writer` directly instead; see below. `filesink.CSV()` defaults to RFC 4180 encoding — minimal quoting, doubled-quote escaping — and derives column order and NULL handling from the schema rather than sniffing the data. Two options exist for consumers that can't process compliant CSV: `WithEscapeCharacter` (e.g. a backslash instead of a doubled quote) and `WithAlwaysEncapsulate` (quote every field, not just ones that need it) — both are opt-in and off by default. A third option, `WithEscapeFormulas`, defends against formula injection: RFC 4180 quoting only controls how a CSV *parser* reads a field, not how a spreadsheet application (Excel, LibreOffice, Google Sheets) then interprets a cell starting with `=`, `+`, `-`, `@`, a tab, or a carriage return once the file is opened. Opt in to `WithEscapeFormulas` whenever CSV output containing untrusted or user-supplied text might be opened directly in spreadsheet software; it's off by default because prepending an escape character changes the field's exact byte content, which is wrong for a machine-to-machine consumer expecting the source value verbatim.
 
 ```go
 import (
@@ -110,6 +110,14 @@ By default, writing to an existing key overwrites it — the usual expectation f
 orders.CopyTo(filesink.New(bucket, "orders.parquet", filesink.Parquet(),
     filesink.WithWriterOptions(&blob.WriterOptions{IfNotExist: true})))
 ```
+
+For a destination that's already an `io.Writer` — stdout, an HTTP response writer, a pipe — `filesink.NewToWriter` skips the bucket entirely:
+
+```go
+orders.CopyTo(filesink.NewToWriter(os.Stdout, filesink.CSV()))
+```
+
+It shares `New`'s `Sink` type, so `WithSchema` and the rest of the lifecycle behave the same either way, but it never closes the writer it's given — closing it, if it needs closing at all, is the caller's responsibility — and `WithWriterOptions` has no effect here, since its knobs (`ContentType`, `IfNotExist`) are blob-object concepts with no equivalent for a plain writer.
 
 ## SQL source
 

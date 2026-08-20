@@ -21,7 +21,7 @@ The lifecycle contract is deliberately strong:
 1. A `Source` stage receives no batches and only produces them; a `Processor` or `Sink` stage receives zero or more.
 2. For a `Processor` or `Sink`, all upstream edges close successfully before its `Finish` runs.
 3. A `Processor`'s or `Sink`'s `Finish` method runs exactly once, but only along the success path: if every upstream input completes successfully, `Finish` runs exactly once. A `Source` has no `Finish` — its lifecycle ends when `Run` returns.
-4. The runtime closes the stage's downstream edges after it returns: after `Run` returns for a `Source`, after `Finish` returns for a `Processor` or `Sink`.
+4. The runtime closes the stage's downstream edges once it returns, whether or not `Finish` ever ran: for a `Source`, that's when `Run` returns; for a `Processor` or `Sink`, that's when `Finish` returns on the success path described in point 3, or immediately — with `Finish` skipped entirely — if that stage's own inputs failed, its own processing failed, or the context was canceled first.
 
 If any stage fails, the pipeline context is canceled before that stage's downstream edges are closed. Downstream stages therefore must not interpret an upstream failure as a successful end-of-stream and run `Finish` on partial data — instead, a stage whose inputs failed or whose context was canceled first skips `Finish` entirely, and may have `Abort` called on it once instead (see `Aborter`). A stage should not treat `Finish` as its only chance to run required cleanup or commit logic; that logic must be reachable from `Abort` too, since a failed or canceled run may never reach `Finish` at all.
 

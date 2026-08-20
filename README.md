@@ -114,6 +114,12 @@ orders.CopyTo(filesink.New(bucket, "orders.parquet", filesink.Parquet(),
 For a destination that's already an `io.Writer` — stdout, an HTTP response writer, a pipe — `filesink.NewToWriter` skips the bucket entirely:
 
 ```go
+import (
+    "os"
+
+    "github.com/verygoodetl/verygoodetl/filesink"
+)
+
 orders.CopyTo(filesink.NewToWriter(os.Stdout, filesink.CSV()))
 ```
 

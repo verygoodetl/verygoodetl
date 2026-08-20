@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -156,8 +157,11 @@ func TestConsumeInputsWaitsForReadersAfterConsumeError(t *testing.T) {
 	e.ch <- envelope{batch: countingBatch{released: &released}}
 	close(e.ch)
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	wantErr := errors.New("boom")
-	err := consumeInputs(context.Background(), []*edge{e}, func(Batch) error {
+	err := consumeInputs(ctx, cancel, []*edge{e}, func(Batch) error {
 		return wantErr
 	})
 
@@ -166,6 +170,50 @@ func TestConsumeInputsWaitsForReadersAfterConsumeError(t *testing.T) {
 	}
 	if !released {
 		t.Fatal("want the still-queued second batch drained and released by the time consumeInputs returns, not left for its detached reader goroutine to release later, unobserved, after the caller has already moved on")
+	}
+}
+
+// foreverSource sends batches until ctx is done, never returning on its own.
+// It stands in for a real unbounded source (e.g. a Kafka consumer) that only
+// stops in response to cancellation.
+type foreverSource struct{}
+
+func (foreverSource) Run(ctx context.Context, out Output) error {
+	for {
+		if err := out.Send(ctx, countingBatch{}); err != nil {
+			return err
+		}
+	}
+}
+
+// failingSink fails on its first Consume.
+type failingSink struct{ err error }
+
+func (s failingSink) Consume(context.Context, Batch) error { return s.err }
+func (failingSink) Finish(context.Context) error           { return nil }
+
+// TestRunCancelsUnboundedSourceOnConsumeFailure is a regression test: a
+// failing Sink.Consume must cancel the pipeline-wide context, not just
+// consumeInputs' own derived context, or an unbounded upstream source never
+// learns to stop and Run hangs forever waiting for its reader goroutine to
+// drain an edge that never closes.
+func TestRunCancelsUnboundedSourceOnConsumeFailure(t *testing.T) {
+	wantErr := errors.New("boom")
+	p := New()
+	p.From(foreverSource{}).To(failingSink{err: wantErr})
+
+	done := make(chan error, 1)
+	go func() {
+		done <- p.Run(context.Background())
+	}()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, wantErr) {
+			t.Fatalf("err=%v, want %v", err, wantErr)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not return; unbounded source was not canceled")
 	}
 }
 

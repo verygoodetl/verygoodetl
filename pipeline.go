@@ -289,16 +289,26 @@ func (p *Pipeline) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	var wg sync.WaitGroup
-	errCh := make(chan error, 1)
+	var (
+		wg       sync.WaitGroup
+		mu       sync.Mutex
+		recorded error
+	)
+	// fail's cancel below is what lets other stages' consumeInputs unblock a
+	// stalled upstream node (see consumeInputs), so a stage failing for a real
+	// reason routinely races against sibling stages that are merely reacting
+	// to that same cancellation. Preferring a non-cancellation error over one
+	// already recorded keeps the reported error the actual root cause instead
+	// of whichever "context canceled" cascade happened to land first.
 	fail := func(err error) {
 		if err == nil {
 			return
 		}
-		select {
-		case errCh <- err:
-		default:
+		mu.Lock()
+		if recorded == nil || (isCancellationErr(recorded) && !isCancellationErr(err)) {
+			recorded = err
 		}
+		mu.Unlock()
 		cancel()
 	}
 
@@ -307,7 +317,7 @@ func (p *Pipeline) Run(ctx context.Context) error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			err := runNode(ctx, n)
+			err := runNode(ctx, cancel, n)
 			if err != nil {
 				// Cancel the graph before closing this stage's outputs. This prevents
 				// downstream stages from observing a clean EOF and entering Finish
@@ -320,22 +330,24 @@ func (p *Pipeline) Run(ctx context.Context) error {
 
 	wg.Wait()
 
-	select {
-	case err := <-errCh:
-		return err
-	default:
-		return nil
-	}
+	return recorded
 }
 
-func runNode(ctx context.Context, n *node) error {
+// isCancellationErr reports whether err is exactly the kind of error a stage
+// returns solely because ctx was canceled out from under it, as opposed to a
+// failure of its own.
+func isCancellationErr(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
+
+func runNode(ctx context.Context, cancel context.CancelFunc, n *node) error {
 	out := nodeOutput{ctx: ctx, edges: n.outgoing}
 
 	switch n.kind {
 	case sourceNode:
 		return n.source.Run(ctx, out)
 	case processorNode:
-		if err := consumeInputs(ctx, n.incoming, func(b Batch) error {
+		if err := consumeInputs(ctx, cancel, n.incoming, func(b Batch) error {
 			defer b.Release()
 			return n.processor.Process(ctx, b, out)
 		}); err != nil {
@@ -348,7 +360,7 @@ func runNode(ctx context.Context, n *node) error {
 		}
 		return n.processor.Finish(ctx, out)
 	case sinkNode:
-		if err := consumeInputs(ctx, n.incoming, func(b Batch) error {
+		if err := consumeInputs(ctx, cancel, n.incoming, func(b Batch) error {
 			defer b.Release()
 			return n.sink.Consume(ctx, b)
 		}); err != nil {
@@ -439,13 +451,21 @@ func (o nodeOutput) Send(ctx context.Context, b Batch) error {
 // in the background. The happy path (merged closing) needs no such wait:
 // close(merged) below only happens after readers.Wait() has already
 // returned, so every reader is already done by construction.
-func consumeInputs(ctx context.Context, inputs []*edge, consume func(Batch) error) error {
+//
+// Canceling the derived context only stops this function's own reader
+// goroutines — it has no effect on the upstream nodes feeding inputs, which
+// watch the pipeline-wide ctx instead. Without also invoking cancel (the
+// pipeline's CancelFunc) before waiting, an upstream node that never stops
+// on its own (e.g. an unbounded source) would keep sending batches forever,
+// so drainEdge would never see its edge close and readers.Wait() below
+// would block forever.
+func consumeInputs(ctx context.Context, cancel context.CancelFunc, inputs []*edge, consume func(Batch) error) error {
 	if len(inputs) == 0 {
 		return nil
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	readCtx, cancelReaders := context.WithCancel(ctx)
+	defer cancelReaders()
 
 	merged := make(chan Batch)
 	var readers sync.WaitGroup
@@ -463,12 +483,12 @@ func consumeInputs(ctx context.Context, inputs []*edge, consume func(Batch) erro
 					}
 					select {
 					case merged <- env.batch:
-					case <-ctx.Done():
+					case <-readCtx.Done():
 						env.batch.Release()
 						drainEdge(input)
 						return
 					}
-				case <-ctx.Done():
+				case <-readCtx.Done():
 					drainEdge(input)
 					return
 				}
@@ -489,12 +509,14 @@ func consumeInputs(ctx context.Context, inputs []*edge, consume func(Batch) erro
 			}
 			if err := consume(b); err != nil {
 				cancel()
+				cancelReaders()
 				readers.Wait()
 				return err
 			}
-		case <-ctx.Done():
+		case <-readCtx.Done():
 			err := ctx.Err()
 			cancel()
+			cancelReaders()
 			readers.Wait()
 			return err
 		}

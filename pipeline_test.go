@@ -122,6 +122,53 @@ func TestProcessorErrorCancelsPipelineAndSkipsFinish(t *testing.T) {
 	}
 }
 
+// countingBatch is a minimal Batch with no real Arrow record behind it —
+// just enough to exercise consumeInputs' handling of a batch it never
+// actually needs to inspect. released, if non-nil, records whether Release
+// was called.
+type countingBatch struct {
+	released *bool
+}
+
+func (countingBatch) Schema() *arrow.Schema { return nil }
+func (countingBatch) NumRows() int64        { return 0 }
+func (countingBatch) Record() arrow.Record  { return nil }
+func (countingBatch) Retain()               {}
+func (b countingBatch) Release() {
+	if b.released != nil {
+		*b.released = true
+	}
+}
+
+// TestConsumeInputsWaitsForReadersAfterConsumeError is a regression test:
+// consumeInputs used to return the instant consume failed, without waiting
+// for the reader goroutines it started for each input edge. Those readers
+// keep running detached in the background until they separately notice
+// ctx is done, so a caller could observe consumeInputs — and thus Run —
+// return while a reader was still draining and releasing whatever batches
+// were left queued on its edge. Here, a second batch is left queued behind
+// the one that fails; consumeInputs must not return until it's been
+// drained and released, not merely eventually.
+func TestConsumeInputsWaitsForReadersAfterConsumeError(t *testing.T) {
+	released := false
+	e := &edge{ch: make(chan envelope, 2)}
+	e.ch <- envelope{batch: countingBatch{}}
+	e.ch <- envelope{batch: countingBatch{released: &released}}
+	close(e.ch)
+
+	wantErr := errors.New("boom")
+	err := consumeInputs(context.Background(), []*edge{e}, func(Batch) error {
+		return wantErr
+	})
+
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("err=%v, want %v", err, wantErr)
+	}
+	if !released {
+		t.Fatal("want the still-queued second batch drained and released by the time consumeInputs returns, not left for its detached reader goroutine to release later, unobserved, after the caller has already moved on")
+	}
+}
+
 // abortableSink records whether the runtime called Abort on it, to verify
 // the runtime invokes Aborter in place of a skipped Finish.
 type abortableSink struct {

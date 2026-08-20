@@ -430,10 +430,22 @@ func (o nodeOutput) Send(ctx context.Context, b Batch) error {
 	return nil
 }
 
+// consumeInputs merges inputs into a single stream and calls consume for
+// each batch. On either early-return path below (a failing consume, or ctx
+// already done), it cancels its own derived context and waits for every
+// reader goroutine to observe that and exit before returning itself —
+// otherwise those goroutines are left running detached, and a caller of
+// Run could observe it return while they're still draining queued batches
+// in the background. The happy path (merged closing) needs no such wait:
+// close(merged) below only happens after readers.Wait() has already
+// returned, so every reader is already done by construction.
 func consumeInputs(ctx context.Context, inputs []*edge, consume func(Batch) error) error {
 	if len(inputs) == 0 {
 		return nil
 	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	merged := make(chan Batch)
 	var readers sync.WaitGroup
@@ -476,10 +488,15 @@ func consumeInputs(ctx context.Context, inputs []*edge, consume func(Batch) erro
 				return nil
 			}
 			if err := consume(b); err != nil {
+				cancel()
+				readers.Wait()
 				return err
 			}
 		case <-ctx.Done():
-			return ctx.Err()
+			err := ctx.Err()
+			cancel()
+			readers.Wait()
+			return err
 		}
 	}
 }

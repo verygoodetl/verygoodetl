@@ -1,0 +1,30 @@
+pipeline_test.go
+  s_7d563ad0358267::t_b36a0ed029896b 9
+  s_7d563ad0358267::t_14eb5263fa6e5a 160-162,164
+  s_7d563ad0358267::t_0c233b7faf63a6 176-219
+README.md
+  s_7d563ad0358267::t_37500c1ef2b494 117-122
+pipeline.go
+  s_7d563ad0358267::t_2d2a5448424cc1 454-462,467-468,486,491,512,516,519
+  s_7d563ad0358267::t_f9b0dc29ad6427 343,350,363
+  s_7d563ad0358267::t_55ef044776d275 320
+  s_7d563ad0358267::t_8d82c27d35d5ae 333,336-340
+  s_7d563ad0358267::t_144abb1fbe73e7 292-302,307-309,311
+  s_7d563ad0358267::t_3e42c8f9d832b0 341-342
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "41e872aa446b3d170c9732c0deede44ebcd059f5",
+  "prompts": {},
+  "sessions": {
+    "s_7d563ad0358267": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e20a5a6a-ff96-4f72-bb2c-9bb3591dd24b",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    }
+  }
+}

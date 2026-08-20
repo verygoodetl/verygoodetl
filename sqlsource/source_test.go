@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	etl "github.com/verygoodetl/verygoodetl"
 	"github.com/verygoodetl/verygoodetl/sqlsource"
@@ -325,6 +326,36 @@ func TestSourceWithAllocatorNilIgnored(t *testing.T) {
 
 	if len(sink.rows) != 1 || sink.rows[0][0] != int64(1) {
 		t.Fatalf("rows=%v, want [[1]] (a nil WithAllocator must not panic and must keep the default allocator)", sink.rows)
+	}
+}
+
+// TestSourceWithAllocatorTypedNilIgnored is a regression test: unlike
+// TestSourceWithAllocatorNilIgnored's untyped nil literal, a typed-nil
+// concrete allocator such as (*memory.CheckedAllocator)(nil), wrapped in
+// the memory.Allocator interface, is != nil. WithAllocator must still catch
+// it and keep the default rather than storing it and panicking the first
+// time an Arrow builder is constructed from it.
+func TestSourceWithAllocatorTypedNilIgnored(t *testing.T) {
+	schema := int64Schema("id")
+	dsn := registerFixture(t, &fixture{
+		columns: []string{"id"},
+		rows:    [][]driver.Value{{int64(1)}},
+	})
+	db, err := sql.Open("sqlsourcefake", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	src, err := sqlsource.New(db, "SELECT id FROM t", schema,
+		sqlsource.WithAllocator((*memory.CheckedAllocator)(nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sink := runSource(t, src)
+
+	if len(sink.rows) != 1 || sink.rows[0][0] != int64(1) {
+		t.Fatalf("rows=%v, want [[1]] (a typed-nil WithAllocator must not panic and must keep the default allocator)", sink.rows)
 	}
 }
 

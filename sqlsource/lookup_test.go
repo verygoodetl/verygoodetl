@@ -344,6 +344,51 @@ func TestLookupWithAllocatorNilIgnored(t *testing.T) {
 	}
 }
 
+// TestLookupWithAllocatorTypedNilIgnored is a regression test: unlike
+// TestLookupWithAllocatorNilIgnored's untyped nil literal, a typed-nil
+// concrete allocator such as (*memory.CheckedAllocator)(nil), wrapped in
+// the memory.Allocator interface, is != nil. WithLookupAllocator must
+// still catch it and keep the default rather than storing it and panicking
+// the first time the batch builder tries to use it.
+func TestLookupWithAllocatorTypedNilIgnored(t *testing.T) {
+	upstreamSchema := int64Schema("id")
+	resultSchema := arrow.NewSchema([]arrow.Field{
+		{Name: "id", Type: arrow.PrimitiveTypes.Int64},
+	}, nil)
+
+	dsn := registerFixture(t, &fixture{
+		columns: []string{"id"},
+		rows:    [][]driver.Value{{int64(1)}},
+	})
+	db, err := sql.Open("sqlsourcefake", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	generate := func(b etl.Batch) (string, []any, error) {
+		return "SELECT id FROM shipments WHERE id = ?", []any{int64(1)}, nil
+	}
+
+	lookup, err := sqlsource.NewLookup(db, generate, resultSchema,
+		sqlsource.WithLookupAllocator((*memory.CheckedAllocator)(nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	p := etl.New()
+	sink := &countingSink{}
+	p.From(fixedBatchSource{batches: []etl.Batch{int64Batch(t, upstreamSchema, 1)}}).
+		Process(lookup).To(sink)
+	if err := p.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(sink.rows) != 1 || sink.rows[0][0] != int64(1) {
+		t.Fatalf("rows=%v, want [[1]] (a typed-nil WithLookupAllocator must not panic and must keep the default allocator)", sink.rows)
+	}
+}
+
 func TestLookupNilArguments(t *testing.T) {
 	resultSchema := arrow.NewSchema([]arrow.Field{{Name: "id", Type: arrow.PrimitiveTypes.Int64}}, nil)
 	db, err := sql.Open("sqlsourcefake", "unused")

@@ -61,11 +61,14 @@ func WithLookupBatchSize(n int) LookupOption {
 }
 
 // WithLookupAllocator sets the memory.Allocator used to build result
-// batches. Defaults to memory.DefaultAllocator. A nil mem is ignored,
-// keeping the default.
+// batches. Defaults to memory.DefaultAllocator. A nil mem — including a
+// typed-nil concrete allocator, e.g.
+// WithLookupAllocator((*memory.CheckedAllocator)(nil)) — is ignored, keeping
+// the default, rather than being stored and panicking on first use inside
+// the batch builder.
 func WithLookupAllocator(mem memory.Allocator) LookupOption {
 	return func(l *Lookup) {
-		if mem != nil {
+		if !nilPointerValue(mem) {
 			l.mem = mem
 		}
 	}
@@ -104,7 +107,7 @@ func NewLookup(db *sql.DB, generate QueryGenerator, schema *arrow.Schema, opts .
 
 	converters := make([]converter, schema.NumFields())
 	for i, f := range schema.Fields() {
-		if nilDataType(f.Type) {
+		if nilPointerValue(f.Type) {
 			return nil, fmt.Errorf("sqlsource: field %d (%s): nil type", i, f.Name)
 		}
 		c, err := converterFor(f.Type)

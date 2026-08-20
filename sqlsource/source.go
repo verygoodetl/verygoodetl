@@ -54,10 +54,13 @@ func WithBatchSize(n int) Option {
 }
 
 // WithAllocator sets the memory.Allocator used to build batches. Defaults to
-// memory.DefaultAllocator. A nil mem is ignored, keeping the default.
+// memory.DefaultAllocator. A nil mem — including a typed-nil concrete
+// allocator, e.g. WithAllocator((*memory.CheckedAllocator)(nil)) — is
+// ignored, keeping the default, rather than being stored and panicking on
+// first use inside the batch builder.
 func WithAllocator(mem memory.Allocator) Option {
 	return func(s *Source) {
-		if mem != nil {
+		if !nilPointerValue(mem) {
 			s.mem = mem
 		}
 	}
@@ -92,7 +95,7 @@ func New(db *sql.DB, query string, schema *arrow.Schema, opts ...Option) (*Sourc
 
 	converters := make([]converter, schema.NumFields())
 	for i, f := range schema.Fields() {
-		if nilDataType(f.Type) {
+		if nilPointerValue(f.Type) {
 			return nil, fmt.Errorf("sqlsource: field %d (%s): nil type", i, f.Name)
 		}
 		c, err := converterFor(f.Type)
@@ -106,22 +109,24 @@ func New(db *sql.DB, query string, schema *arrow.Schema, opts ...Option) (*Sourc
 	return s, nil
 }
 
-// nilDataType reports whether dt is either an untyped nil interface (dt ==
-// nil) or a typed nil pointer wrapped in a non-nil interface, e.g. a caller
-// building arrow.Field{Type: (*arrow.TimestampType)(nil)} — which
+// nilPointerValue reports whether v is either an untyped nil interface (v ==
+// nil) or a typed nil pointer wrapped in a non-nil interface — e.g. a caller
+// building arrow.Field{Type: (*arrow.TimestampType)(nil)} (which
 // arrow.NewSchema itself does not reject, since it only checks field.Type ==
-// nil too. A plain dt == nil check misses that case: the interface carries a
-// concrete type descriptor and a nil value pointer, so it compares != nil
-// even though dt.ID() type-asserting back to *arrow.TimestampType (or
-// similar) succeeds with a nil receiver, and converterFor then panics on the
-// first field access. arrow-go's DataType implementations are essentially
-// all pointer types, so checking Kind() == reflect.Ptr covers them; Kind is
-// checked before IsNil because IsNil panics on kinds that don't support it.
-func nilDataType(dt arrow.DataType) bool {
-	if dt == nil {
+// nil too) or calling WithAllocator((*memory.CheckedAllocator)(nil)). A plain
+// v == nil check misses both cases: the interface carries a concrete type
+// descriptor and a nil value pointer, so it compares != nil even though
+// using it — type-asserting back to *arrow.TimestampType (or similar) and
+// calling a method, or converterFor accessing dt.ID() — panics on the nil
+// receiver. arrow-go's DataType and memory.Allocator implementations are
+// essentially all pointer types, so checking Kind() == reflect.Ptr covers
+// them; Kind is checked before IsNil because IsNil panics on kinds that
+// don't support it.
+func nilPointerValue(v any) bool {
+	if v == nil {
 		return true
 	}
-	rv := reflect.ValueOf(dt)
+	rv := reflect.ValueOf(v)
 	return rv.Kind() == reflect.Ptr && rv.IsNil()
 }
 

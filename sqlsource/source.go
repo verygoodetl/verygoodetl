@@ -19,6 +19,12 @@ const defaultBatchSize = 1024
 // Source may be reused across multiple pipeline runs, including
 // concurrently — database/sql's *sql.DB is itself a connection pool
 // designed for concurrent use.
+//
+// Run holds one connection checked out from db's pool for as long as its
+// query's *sql.Rows stays open — from QueryContext until every batch has
+// been scanned — which for a large or slow-draining result can span the
+// entire pipeline run. See Lookup's doc for the deadlock this creates if a
+// downstream Lookup is given the same db.
 type Source struct {
 	db        *sql.DB
 	query     string

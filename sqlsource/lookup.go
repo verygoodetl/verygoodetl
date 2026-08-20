@@ -32,6 +32,18 @@ type QueryGenerator func(batch etl.Batch) (query string, args []any, err error)
 // with a Lookup's results, attach both to a Pipeline.Merge and do the
 // combination there.
 //
+// db must not be a connection pool shared with an upstream Source (or any
+// other stage) that may still hold an open *sql.Rows against the same
+// database when this Lookup runs: an etl.Pipeline runs every stage
+// concurrently in its own goroutine, so Lookup's QueryContext call races a
+// Source that is still streaming rows from an earlier query on the same
+// db. If that db's pool is limited to a single open connection — a common
+// setting for SQLite — the one connection available is the one the
+// upstream Rows is holding, and QueryContext blocks forever waiting for a
+// connection nothing will ever release, deadlocking the whole pipeline.
+// Give Lookup its own *sql.DB — a second pool opened against the same
+// database file works fine — rather than reusing an upstream stage's db.
+//
 // A batch with zero rows, or whose generate returns zero args, is skipped
 // without running a query, since an empty lookup (e.g. an "IN ()" clause)
 // is invalid SQL for most databases.

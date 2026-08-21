@@ -547,6 +547,33 @@ func (customNilBatchSource) Run(ctx context.Context, out Output) error {
 	return out.Send(ctx, Batch(b))
 }
 
+// typedNilCtxSource sends a well-formed batch but passes a typed-nil
+// context.Context to Send, exercising Send's own ctx == nil fallback check
+// rather than nilBatch.
+type typedNilCtxSource struct {
+	t *testing.T
+}
+
+func (s typedNilCtxSource) Run(ctx context.Context, out Output) error {
+	var typedNil *nilPtrContext
+	return out.Send(typedNil, intBatch(s.t, 1))
+}
+
+// TestSendTypedNilContextFallsBackToNodeContextInsteadOfPanicking is a
+// regression test: Send's `ctx == nil` fallback check missed a typed-nil
+// context.Context (e.g. `var c *myContext = nil` wrapped in the interface),
+// which compares != nil, so the typed-nil ctx was kept instead of falling
+// back to the node's own context, and ctx.Done() below panicked on the nil
+// receiver. Send now uses isNilValue, matching Run's typed-nil validation.
+func TestSendTypedNilContextFallsBackToNodeContextInsteadOfPanicking(t *testing.T) {
+	p := New()
+	p.From(typedNilCtxSource{t: t}).To(SinkFuncs{})
+
+	if err := p.Run(context.Background()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+}
+
 func TestSendTypedNilCustomBatchReturnsErrorInsteadOfPanicking(t *testing.T) {
 	p := New()
 	p.From(customNilBatchSource{}).To(SinkFuncs{})

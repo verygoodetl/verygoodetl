@@ -422,7 +422,7 @@ func (o nodeOutput) Send(ctx context.Context, b Batch) error {
 	if nilBatch(b) {
 		return errors.New("etl: cannot send a nil batch")
 	}
-	if ctx == nil {
+	if isNilValue(ctx) {
 		ctx = o.ctx
 	}
 

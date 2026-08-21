@@ -1,0 +1,19 @@
+ARCHITECTURE.md
+  s_049f9e9cca484b::t_a97186a461e0ec 50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "5ac87d50736df0348a7e1c4eee9718f61fecfcc5",
+  "prompts": {},
+  "sessions": {
+    "s_049f9e9cca484b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "79cc441e-2928-4a48-af05-6b4526d40601",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    }
+  }
+}

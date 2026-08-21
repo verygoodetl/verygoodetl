@@ -293,6 +293,46 @@ func TestSinkNewToWriterNilWriterReturnsErrorInsteadOfPanicking(t *testing.T) {
 	}
 }
 
+// TestSinkNewNilBucketZeroBatchesReturnsErrorInsteadOfSucceeding is a
+// regression test: Finish used to return nil before ever checking
+// constructErr when the sink received no batches and had no explicit
+// schema, so an invalid Sink (e.g. New(nil, ...)) silently reported success
+// as long as it happened to receive no input.
+func TestSinkNewNilBucketZeroBatchesReturnsErrorInsteadOfSucceeding(t *testing.T) {
+	p := etl.New()
+	p.From(batchesSource{}).To(filesink.New(nil, "orders.parquet", filesink.Parquet()))
+
+	if err := p.Run(context.Background()); err == nil {
+		t.Fatal("want error for a nil bucket passed to New, even with zero batches")
+	}
+}
+
+// nilPtrWriter is an io.Writer whose zero value is a typed-nil pointer:
+// (*nilPtrWriter)(nil) satisfies io.Writer via the pointer receiver below,
+// so it compares != nil as an interface value, but calling Write panics on
+// the nil receiver.
+type nilPtrWriter struct{}
+
+func (w *nilPtrWriter) Write(p []byte) (int, error) { return len(p), nil }
+
+// TestSinkNewToWriterTypedNilWriterReturnsErrorInsteadOfPanicking is a
+// regression test: NewToWriter only checked w == nil, which misses a
+// typed-nil pointer wrapped in the io.Writer interface. Such a value is
+// != nil by interface comparison and used to bypass the construction-error
+// check entirely, panicking once the format writer's first Write call
+// reached the nil receiver.
+func TestSinkNewToWriterTypedNilWriterReturnsErrorInsteadOfPanicking(t *testing.T) {
+	schema := fieldSchema("value")
+	var typedNil *nilPtrWriter
+	p := etl.New()
+	p.From(batchesSource{batches: []etl.Batch{batch(t, schema, 1)}}).
+		To(filesink.NewToWriter(typedNil, filesink.Parquet()))
+
+	if err := p.Run(context.Background()); err == nil {
+		t.Fatal("want error for a typed-nil writer passed to NewToWriter")
+	}
+}
+
 func TestSinkSchemaMismatchAbortsWithoutCommitting(t *testing.T) {
 	bucket := memblob.OpenBucket(nil)
 	defer bucket.Close()

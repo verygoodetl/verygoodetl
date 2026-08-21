@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"reflect"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"gocloud.dev/blob"
@@ -85,13 +86,27 @@ func New(bucket *blob.Bucket, key string, format Format, opts ...SinkOption) *Si
 // equivalent for an arbitrary io.Writer.
 func NewToWriter(w io.Writer, format Format, opts ...SinkOption) *Sink {
 	s := &Sink{w: w, format: format, writerBacked: true}
-	if w == nil {
+	if isNilWriter(w) {
 		s.constructErr = fmt.Errorf("filesink: NewToWriter: nil writer")
 	}
 	for _, opt := range opts {
 		opt(s)
 	}
 	return s
+}
+
+// isNilWriter reports whether w is either an untyped nil interface (w == nil)
+// or a typed nil pointer wrapped in a non-nil interface, e.g. a caller
+// passing a `var f *os.File = nil` as w. A plain `w == nil` check misses the
+// typed-nil case: the interface carries a concrete type descriptor and a nil
+// value pointer, so it compares != nil even though writeOnly{w} panics the
+// moment format.NewWriter's first Write call reaches the nil receiver.
+func isNilWriter(w io.Writer) bool {
+	if w == nil {
+		return true
+	}
+	rv := reflect.ValueOf(w)
+	return rv.Kind() == reflect.Ptr && rv.IsNil()
 }
 
 // Consume implements etl.Sink.
@@ -120,6 +135,9 @@ func (s *Sink) Consume(ctx context.Context, b etl.Batch) error {
 
 // Finish implements etl.Sink.
 func (s *Sink) Finish(ctx context.Context) error {
+	if s.constructErr != nil {
+		return s.constructErr
+	}
 	if !s.started {
 		if s.explicitSchema == nil {
 			return nil

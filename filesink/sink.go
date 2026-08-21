@@ -65,8 +65,11 @@ func WithSchema(schema *arrow.Schema) SinkOption {
 // an io.Writer instead of a bucket should use NewToWriter.
 func New(bucket *blob.Bucket, key string, format Format, opts ...SinkOption) *Sink {
 	s := &Sink{bucket: bucket, key: key, format: format}
-	if bucket == nil {
+	switch {
+	case bucket == nil:
 		s.constructErr = fmt.Errorf("filesink: New: nil bucket (use NewToWriter for a caller-supplied io.Writer)")
+	case isNilFormat(format):
+		s.constructErr = fmt.Errorf("filesink: New: nil format")
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -86,8 +89,11 @@ func New(bucket *blob.Bucket, key string, format Format, opts ...SinkOption) *Si
 // equivalent for an arbitrary io.Writer.
 func NewToWriter(w io.Writer, format Format, opts ...SinkOption) *Sink {
 	s := &Sink{w: w, format: format, writerBacked: true}
-	if isNilWriter(w) {
+	switch {
+	case isNilWriter(w):
 		s.constructErr = fmt.Errorf("filesink: NewToWriter: nil writer")
+	case isNilFormat(format):
+		s.constructErr = fmt.Errorf("filesink: NewToWriter: nil format")
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -95,17 +101,68 @@ func NewToWriter(w io.Writer, format Format, opts ...SinkOption) *Sink {
 	return s
 }
 
-// isNilWriter reports whether w is either an untyped nil interface (w == nil)
-// or a typed nil pointer wrapped in a non-nil interface, e.g. a caller
-// passing a `var f *os.File = nil` as w. A plain `w == nil` check misses the
-// typed-nil case: the interface carries a concrete type descriptor and a nil
-// value pointer, so it compares != nil even though writeOnly{w} panics the
-// moment format.NewWriter's first Write call reaches the nil receiver.
+// isNilWriter reports whether w is nil in any way that guarantees
+// writeOnly{w} panics the moment format.NewWriter's first Write call
+// reaches it: an untyped nil interface (w == nil), a typed nil pointer, or a
+// nil map, slice, func, or chan wrapped in a non-nil interface — e.g. a
+// caller passing a `var f *os.File = nil` as w. A plain `w == nil` check
+// misses all of these: the interface carries a concrete type descriptor and
+// a nil value, so it compares != nil.
+//
+// This is broader than the root etl package's isNilValue check (used for
+// Source/Processor/Sink), which deliberately only treats a nil *pointer* as
+// invalid: those are open, single- or few-method interfaces where a named
+// map/slice/func/chan type with a value-receiver method that ignores the
+// receiver is a plausible, safe adapter (mirroring http.HandlerFunc).
+// io.Writer's single Write method has no such use — a nil map, slice, func,
+// or chan implementing Write via a receiver that actually writes bytes
+// panics just as reliably as a nil pointer would, so there's no meaningful
+// non-nil-pointer capability being protected by leaving those kinds
+// unchecked. Same reasoning nilBatch (pipeline.go) applies to Batch.
 func isNilWriter(w io.Writer) bool {
 	if w == nil {
 		return true
 	}
 	rv := reflect.ValueOf(w)
+	switch rv.Kind() {
+	case reflect.Ptr, reflect.Map, reflect.Slice, reflect.Func, reflect.Chan:
+		return rv.IsNil()
+	default:
+		return false
+	}
+}
+
+// isNilFormat reports whether format is either an untyped nil interface
+// (format == nil) or a typed nil pointer wrapped in a non-nil interface,
+// e.g. a caller passing a `var f *myFormat = nil` as format. Format is an
+// open interface like Source/Processor/Sink (see Format's doc comment), so
+// this mirrors the root etl package's isNilValue check for those rather
+// than isNilWriter's broadened one above: only a nil pointer is guaranteed
+// to blow up the moment a method with a pointer receiver dereferences one
+// of its fields, and a nil map/slice/func/chan implementation with a
+// value-receiver method that never touches the receiver remains a
+// plausible, safe adapter for a multi-method interface like this one.
+func isNilFormat(format Format) bool {
+	if format == nil {
+		return true
+	}
+	rv := reflect.ValueOf(format)
+	return rv.Kind() == reflect.Ptr && rv.IsNil()
+}
+
+// isNilRecord reports whether rec is either an untyped nil interface
+// (rec == nil) or a typed nil pointer wrapped in a non-nil interface, e.g. a
+// custom etl.Batch whose Record method returns a typed-nil concrete
+// arrow.Record. arrow.Record's concrete implementations (e.g.
+// *array.RecordBatch) are pointer types, the same shape nilBatch
+// (pipeline.go) already checks for *ArrowBatch's own wrapped record field
+// via the root etl package's isNilValue, so this mirrors that check for the
+// general etl.Batch case filesink itself must handle.
+func isNilRecord(rec arrow.Record) bool {
+	if rec == nil {
+		return true
+	}
+	rv := reflect.ValueOf(rec)
 	return rv.Kind() == reflect.Ptr && rv.IsNil()
 }
 
@@ -121,12 +178,24 @@ func (s *Sink) Consume(ctx context.Context, b etl.Batch) error {
 	if schema == nil {
 		return fmt.Errorf("filesink: batch has a nil schema")
 	}
+	// A valid, non-nil schema says nothing about whether the record itself
+	// is usable: a custom etl.Batch can return a real *arrow.Schema from
+	// Schema() while Record() returns nil, or a typed-nil concrete
+	// arrow.Record, which slips past both the pipeline runtime's own
+	// nilBatch check (pipeline.go, which only inspects the wrapped record
+	// for the built-in *ArrowBatch) and the schema check above. Same
+	// reasoning as the schema check: rw.Write below dereferences the record
+	// with no nil check of its own.
+	record := b.Record()
+	if isNilRecord(record) {
+		return fmt.Errorf("filesink: batch has a nil record")
+	}
 	if !s.started {
 		if err := s.open(ctx, schema); err != nil {
 			return err
 		}
 	}
-	if err := s.rw.Write(b.Record()); err != nil {
+	if err := s.rw.Write(record); err != nil {
 		s.abort()
 		return fmt.Errorf("filesink: write batch: %w", err)
 	}

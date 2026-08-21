@@ -270,6 +270,32 @@ func TestRunNilContextReturnsErrorInsteadOfPanicking(t *testing.T) {
 	}
 }
 
+// nilPtrContext lets a test construct a typed-nil context.Context: a
+// *nilPtrContext(nil) satisfies the interface via its embedded field, so it
+// compares != nil, but calling any method on it panics on the nil receiver.
+type nilPtrContext struct{ context.Context }
+
+// TestRunTypedNilContextReturnsErrorInsteadOfPanicking is a regression test:
+// a typed-nil context.Context (e.g. `var c *myContext = nil` wrapped in the
+// interface) is != nil by interface comparison, so a plain `ctx == nil`
+// check lets it through and context.WithCancel(ctx) panics calling Done() on
+// the nil receiver. Run must catch this the same way isNilValue already
+// does for a typed-nil stage passed to From/Process/Merge/To.
+func TestRunTypedNilContextReturnsErrorInsteadOfPanicking(t *testing.T) {
+	p := New()
+	p.From(batchesSource{batches: []Batch{intBatch(t, 1)}}).To(SinkFuncs{})
+
+	var typedNil *nilPtrContext
+	err := p.Run(typedNil)
+	if err == nil {
+		t.Fatal("want error for a typed-nil context.Context, got nil")
+	}
+	const want = "etl: Run called with a nil context.Context"
+	if !strings.Contains(err.Error(), want) {
+		t.Fatalf("Run error = %q, want it to contain %q", err.Error(), want)
+	}
+}
+
 func TestGraphMutationAfterRunPanics(t *testing.T) {
 	p := New()
 	p.From(batchesSource{batches: []Batch{intBatch(t, 1)}}).To(SinkFuncs{})

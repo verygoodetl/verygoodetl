@@ -280,7 +280,7 @@ func (p *Pipeline) connect(from, to *node) {
 // closed channels. Calling Run again returns an error instead of reusing
 // those closed edges.
 func (p *Pipeline) Run(ctx context.Context) error {
-	if ctx == nil {
+	if isNilValue(ctx) {
 		return errors.New("etl: Run called with a nil context.Context")
 	}
 

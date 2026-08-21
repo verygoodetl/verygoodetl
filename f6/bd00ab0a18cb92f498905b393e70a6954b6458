@@ -1,0 +1,23 @@
+pipeline.go
+  s_049f9e9cca484b::t_ad6da6b0e41b65 283
+pipeline_test.go
+  s_049f9e9cca484b::t_dff82b95a32570 270,273-293
+  s_049f9e9cca484b::t_a5415de7348a6f 268-269
+  s_049f9e9cca484b::t_11fbd27e69e467 271-272
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "f6bd00ab0a18cb92f498905b393e70a6954b6458",
+  "prompts": {},
+  "sessions": {
+    "s_049f9e9cca484b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "79cc441e-2928-4a48-af05-6b4526d40601",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    }
+  }
+}

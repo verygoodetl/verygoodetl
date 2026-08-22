@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	_ "time/tzdata" // TestCSVTimestampUsesDeclaredTimeZone resolves "America/New_York"; embed tzdata so it passes without relying on the host's zoneinfo database.
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -117,6 +118,60 @@ func TestCSVRoundTrip(t *testing.T) {
 	row2 := rows[2]
 	if row2[1] != "" { // NULL name -> empty string
 		t.Fatalf("row2 name=%q, want empty (null)", row2[1])
+	}
+}
+
+// TestCSVTimestampUsesDeclaredTimeZone verifies a TIMESTAMP field's
+// schema-declared TimeZone is honored when formatting: the rendered
+// wall-clock time and offset must reflect the declared zone, not UTC.
+func TestCSVTimestampUsesDeclaredTimeZone(t *testing.T) {
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "created", Type: &arrow.TimestampType{Unit: arrow.Microsecond, TimeZone: "America/New_York"}},
+	}, nil)
+
+	// 2026-08-17T12:30:00Z is 08:30:00-04:00 in America/New_York (EDT).
+	when := time.Date(2026, 8, 17, 12, 30, 0, 0, time.UTC)
+	ts, err := arrow.TimestampFromTime(when, arrow.Microsecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := array.NewTimestampBuilder(memory.DefaultAllocator, &arrow.TimestampType{Unit: arrow.Microsecond, TimeZone: "America/New_York"})
+	defer b.Release()
+	b.Append(ts)
+	arr := b.NewArray()
+	defer arr.Release()
+	rec := array.NewRecord(schema, []arrow.Array{arr}, 1)
+	defer rec.Release()
+
+	var buf bytes.Buffer
+	w, err := filesink.CSV().NewWriter(schema, &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Write(rec); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	r := csv.NewReader(&buf)
+	rows, err := r.ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("rows=%d, want 2: %v", len(rows), rows)
+	}
+
+	want := when.In(loc).Format(time.RFC3339Nano)
+	if rows[1][0] != want {
+		t.Fatalf("created=%q, want %q (zone-converted wall clock and offset)", rows[1][0], want)
 	}
 }
 

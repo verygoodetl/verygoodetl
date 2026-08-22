@@ -284,6 +284,22 @@ func csvSchemaCompatible(a, b *arrow.Schema) bool {
 // values.
 type formatter func(arr arrow.Array, i int) string
 
+// csvTimestampLocation resolves the *time.Location that a TIMESTAMP field's
+// declared TimeZone should be converted into before formatting, so the
+// rendered wall-clock time and offset reflect the field's own declared zone
+// rather than always UTC. This mirrors sqlsource's timestampTextLocation: an
+// empty TimeZone means the schema declares no zone at all, so the instant is
+// rendered in UTC; tz is matched against "UTC" case-insensitively (matching
+// arrow-go's own zone handling) before falling through to time.LoadLocation
+// for a named IANA zone, which requires either the host's zoneinfo files or
+// a blank-imported time/tzdata to resolve anything other than "UTC"/"Local".
+func csvTimestampLocation(tz string) (*time.Location, error) {
+	if tz == "" || strings.EqualFold(tz, "UTC") {
+		return time.UTC, nil
+	}
+	return time.LoadLocation(tz)
+}
+
 func csvFormatterFor(dt arrow.DataType) (formatter, error) {
 	switch dt.ID() {
 	case arrow.INT64:
@@ -307,10 +323,15 @@ func csvFormatterFor(dt arrow.DataType) (formatter, error) {
 			return base64.StdEncoding.EncodeToString(arr.(*array.Binary).Value(i))
 		}, nil
 	case arrow.TIMESTAMP:
-		unit := dt.(*arrow.TimestampType).Unit
+		ts := dt.(*arrow.TimestampType)
+		loc, err := csvTimestampLocation(ts.TimeZone)
+		if err != nil {
+			return nil, fmt.Errorf("resolve declared time zone %q: %w", ts.TimeZone, err)
+		}
+		unit := ts.Unit
 		return func(arr arrow.Array, i int) string {
-			ts := arr.(*array.Timestamp).Value(i)
-			return ts.ToTime(unit).Format(time.RFC3339Nano)
+			val := arr.(*array.Timestamp).Value(i)
+			return val.ToTime(unit).In(loc).Format(time.RFC3339Nano)
 		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported type %s", dt)

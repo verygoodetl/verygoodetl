@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -300,7 +301,29 @@ func csvTimestampLocation(tz string) (*time.Location, error) {
 	return time.LoadLocation(tz)
 }
 
+// isNilDataType reports whether dt is either an untyped nil interface
+// (dt == nil) or a typed nil pointer wrapped in a non-nil interface, e.g. a
+// field built as arrow.Field{Type: (*arrow.TimestampType)(nil)}.
+// arrow.NewSchema does not reject this: it only checks field.Type == nil,
+// which a typed-nil pointer fails to satisfy since the interface carries a
+// concrete type descriptor alongside the nil value. Left unchecked, dt.ID()
+// below happens to be safe for arrow-go's DataTypes (their ID methods
+// ignore the receiver), but the subsequent type assertion and field access
+// — e.g. dt.(*arrow.TimestampType).TimeZone in the TIMESTAMP case — panics
+// on the nil receiver. Mirrors sqlsource's nilPointerValue for the same
+// underlying arrow.DataType nil-pointer shape.
+func isNilDataType(dt arrow.DataType) bool {
+	if dt == nil {
+		return true
+	}
+	rv := reflect.ValueOf(dt)
+	return rv.Kind() == reflect.Ptr && rv.IsNil()
+}
+
 func csvFormatterFor(dt arrow.DataType) (formatter, error) {
+	if isNilDataType(dt) {
+		return nil, fmt.Errorf("nil field type")
+	}
 	switch dt.ID() {
 	case arrow.INT64:
 		return func(arr arrow.Array, i int) string {

@@ -175,6 +175,47 @@ func TestCSVTimestampUsesDeclaredTimeZone(t *testing.T) {
 	}
 }
 
+// TestCSVNewWriterTypedNilFieldTypeReturnsError is a regression test:
+// arrow.NewSchema only rejects a field whose Type is an untyped nil
+// interface, not a typed-nil pointer like (*arrow.TimestampType)(nil) — the
+// interface carries a concrete type descriptor alongside the nil value, so
+// it compares != nil and sails through. csvFormatterFor then called dt.ID()
+// (safe, since arrow-go's ID methods ignore the receiver) followed by a type
+// assertion and field access, e.g. dt.(*arrow.TimestampType).TimeZone,
+// which panicked on the nil receiver instead of NewWriter returning an
+// ordinary error.
+func TestCSVNewWriterTypedNilFieldTypeReturnsError(t *testing.T) {
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "created", Type: (*arrow.TimestampType)(nil)},
+	}, nil)
+
+	var buf bytes.Buffer
+	if _, err := filesink.CSV().NewWriter(schema, &buf); err == nil {
+		t.Fatal("want error for a typed-nil field type, got nil")
+	}
+}
+
+// TestSinkWithSchemaTypedNilFieldTypeReturnsError mirrors
+// TestCSVNewWriterTypedNilFieldTypeReturnsError for the other path that
+// reaches Format.NewWriter with a caller-supplied schema: an empty Sink
+// configured with WithSchema opens its writer from Finish rather than
+// Consume, since no batch ever arrives to supply a schema of its own.
+func TestSinkWithSchemaTypedNilFieldTypeReturnsError(t *testing.T) {
+	bucket := memblob.OpenBucket(nil)
+	defer bucket.Close()
+
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "created", Type: (*arrow.TimestampType)(nil)},
+	}, nil)
+
+	p := etl.New()
+	p.From(batchesSource{}).To(filesink.New(bucket, "empty.csv", filesink.CSV(), filesink.WithSchema(schema)))
+
+	if err := p.Run(context.Background()); err == nil {
+		t.Fatal("want error for a typed-nil field type in WithSchema, got nil")
+	}
+}
+
 func equalStrings(a, b []string) bool {
 	if len(a) != len(b) {
 		return false

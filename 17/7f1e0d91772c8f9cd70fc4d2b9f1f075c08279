@@ -1,0 +1,30 @@
+sqlsink/sink.go
+  s_be150e0123928b::t_f66d509fb4c63d 165-167
+  s_be150e0123928b::t_fcfd73e07d801f 174-176
+  s_be150e0123928b::t_ce43834c8c7dd3 264-274
+  s_be150e0123928b::t_aa16cc88671321 147-150
+  s_be150e0123928b::t_372af4eaba9424 50-56
+  s_be150e0123928b::t_2e7b7fe278488c 115-116
+sqlsink/sink_test.go
+  s_be150e0123928b::t_bc6a423b5a84b5 212-245
+  s_be150e0123928b::t_0748eca1e23487 58-146
+  s_be150e0123928b::t_18079a63743372 457,547-660
+  s_be150e0123928b::t_c6b861756b40f3 458-546
+  s_be150e0123928b::t_6e3358802459b8 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "177f1e0d91772c8f9cd70fc4d2b9f1f075c08279",
+  "prompts": {},
+  "sessions": {
+    "s_be150e0123928b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "72c0c04d-2cc7-4b55-9ed9-ad352eb634fd",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": null
+    }
+  }
+}

@@ -1,0 +1,38 @@
+sqlsink/sink.go
+  s_ca952b2548a279::t_3c393e18336b91 333-339,354-356
+  s_ca952b2548a279::t_917251106e5aba 78-79,82-84
+  s_ca952b2548a279::t_21f4f33ba4c2b1 116-118,121-125,127
+  s_ca952b2548a279::t_5dbfc5b7f00572 362-364
+sqlsink/sink_test.go
+  s_ca952b2548a279::t_caffa9ff0c8e33 637-661
+  s_ca952b2548a279::t_d16825f95a6b1f 1275-1318,1322-1349
+  s_ca952b2548a279::t_5c9b85fe19ee39 1319-1321
+  s_ca952b2548a279::t_35129d17c3a92a 6
+  s_ca952b2548a279::t_13808195aa76da 368-373,375,378-383
+  s_ca952b2548a279::t_7935e9d481a3ad 1038-1049
+  s_be150e0123928b::t_cc3fa0fbe01b6f 1050-1055
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b87bb2112af55758adcd5c6d7aacee0a5fef2910",
+  "prompts": {},
+  "sessions": {
+    "s_be150e0123928b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "72c0c04d-2cc7-4b55-9ed9-ad352eb634fd",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    },
+    "s_ca952b2548a279": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "764258cf-8c8e-4985-8a77-c548fde34c49",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": null
+    }
+  }
+}

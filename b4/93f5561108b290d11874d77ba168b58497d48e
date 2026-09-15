@@ -1,0 +1,63 @@
+sqlsink/sink.go
+  s_ca952b2548a279::t_5924e038133ad2 265-267,282-287
+  s_ca952b2548a279::t_50166b25dbf2ee 353,355-360,373
+  s_ca952b2548a279::t_02d7bbee286457 70,72
+  s_ca952b2548a279::t_383caa3593fd1e 111-125
+  s_ca952b2548a279::t_21f4f33ba4c2b1 133-135,138-142,144
+  s_ca952b2548a279::t_3c393e18336b91 424-430,445-447
+  s_ca952b2548a279::t_917251106e5aba 80-81,84-86
+  s_ca952b2548a279::t_5dbfc5b7f00572 453-455
+  s_ca952b2548a279::t_35a9be07c4e961 388-423
+  s_ca952b2548a279::t_46a685e2391440 148-171,190-192,204-205
+  s_415ab668db447e::t_dbc9ee862cce4a 206
+README.md
+  s_ca952b2548a279::t_3cc043f6e9bb01 205,207
+sqlsink/sink_internal_test.go
+  s_ca952b2548a279::t_105f63298ab4da 100-200
+  s_ca952b2548a279::t_ca2ff6e9421476 13
+sqlsink/sink_test.go
+  s_ca952b2548a279::t_82220cce7b70c7 8
+  s_ca952b2548a279::t_cf790577ad1b80 436-485
+  s_ca952b2548a279::t_525a27a9c2b0c1 1236-1354
+  s_ca952b2548a279::t_d16825f95a6b1f 1445-1488,1492-1519
+  s_be150e0123928b::t_cc3fa0fbe01b6f 1101-1106
+  s_ca952b2548a279::t_35129d17c3a92a 6
+  s_ca952b2548a279::t_13808195aa76da 369-374,376,379-384
+  s_ca952b2548a279::t_caffa9ff0c8e33 688-712
+  s_ca952b2548a279::t_5c9b85fe19ee39 1489-1491
+  s_ca952b2548a279::t_7935e9d481a3ad 1089-1100
+sqlsink/doc.go
+  s_ca952b2548a279::t_dee452540a80c6 22-29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b493f5561108b290d11874d77ba168b58497d48e",
+  "prompts": {},
+  "sessions": {
+    "s_415ab668db447e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3c875eb9-2e42-4044-8f73-7205f29c00d7",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    },
+    "s_be150e0123928b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "72c0c04d-2cc7-4b55-9ed9-ad352eb634fd",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    },
+    "s_ca952b2548a279": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "764258cf-8c8e-4985-8a77-c548fde34c49",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": null
+    }
+  }
+}

@@ -1,0 +1,52 @@
+sqlsink/sink.go
+  s_be150e0123928b::t_372af4eaba9424 50-56
+  s_be150e0123928b::t_a052a4b944167e 312-314
+  s_be150e0123928b::t_2e7b7fe278488c 120
+  s_be150e0123928b::t_318a719f4b5c96 188
+  s_be150e0123928b::t_2ce5935b9df157 292-293
+  s_be150e0123928b::t_06dc3ae1d3b463 178-180
+  s_be150e0123928b::t_d8d2bf50571457 282-291,296-297,299-301,305-310,315-325,328
+  s_be150e0123928b::t_bdabddd177dfa1 294-295
+  s_be150e0123928b::t_aa16cc88671321 159-160
+  s_be150e0123928b::t_584e32a0b58967 95-99
+  s_be150e0123928b::t_ce43834c8c7dd3 329-330
+  s_be150e0123928b::t_f66d509fb4c63d 175-177
+  s_be150e0123928b::t_a5f3e1df4dd0e7 183,191-194
+  s_be150e0123928b::t_aef2159ade7fc0 298,302-304,311,326-327
+  s_be150e0123928b::t_acec55d911b1c4 151-158
+  s_be150e0123928b::t_fcfd73e07d801f 189-190
+  s_be150e0123928b::t_805bbfe98a9e0d 119
+sqlsink/doc.go
+  s_be150e0123928b::t_03d4bad3b3d278 16-21
+sqlsink/sink_test.go
+  s_be150e0123928b::t_0748eca1e23487 59-147
+  s_be150e0123928b::t_cc3fa0fbe01b6f 891-924,927-931,933-939
+  s_be150e0123928b::t_2629be5960682b 932
+  s_be150e0123928b::t_166bb6e1c41bb3 925-926
+  s_be150e0123928b::t_074ca37c7815d7 534-564
+  s_be150e0123928b::t_f7fdf8393c47ef 802-890,940-971
+  s_be150e0123928b::t_18079a63743372 489,612-723
+  s_be150e0123928b::t_bc6a423b5a84b5 213-246
+  s_be150e0123928b::t_e8897a90a9f9db 6
+  s_be150e0123928b::t_e3266d74db4a2a 724-801,972-999
+  s_be150e0123928b::t_6e3358802459b8 8
+  s_be150e0123928b::t_c14f3995fd334b 367-397
+  s_be150e0123928b::t_c6b861756b40f3 495-533,565-611
+  s_be150e0123928b::t_843f6293f3efa5 490-494
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "94392d0f629c0e394b37f49c9b9ce2dd104df7ba",
+  "prompts": {},
+  "sessions": {
+    "s_be150e0123928b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "72c0c04d-2cc7-4b55-9ed9-ad352eb634fd",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": null
+    }
+  }
+}

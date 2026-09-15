@@ -1,0 +1,71 @@
+sqlsink/doc.go
+  s_ca952b2548a279::t_dee452540a80c6 22-29
+sqlsink/sink_test.go
+  s_ca952b2548a279::t_35129d17c3a92a 6
+  s_ca952b2548a279::t_5c9b85fe19ee39 1508-1510
+  s_ca952b2548a279::t_cf790577ad1b80 436-485
+  s_ca952b2548a279::t_82220cce7b70c7 8
+  s_ca952b2548a279::t_caffa9ff0c8e33 688-712
+  s_be150e0123928b::t_cc3fa0fbe01b6f 1101-1106
+  s_ca952b2548a279::t_0527416633cb56 1271-1289
+  s_ca952b2548a279::t_d16825f95a6b1f 1464-1507,1511-1538
+  s_ca952b2548a279::t_525a27a9c2b0c1 1236-1270,1290-1373
+  s_ca952b2548a279::t_13808195aa76da 369-374,376,379-384
+  s_ca952b2548a279::t_7935e9d481a3ad 1089-1100
+sqlsink/sink.go
+  s_ca952b2548a279::t_35a9be07c4e961 409-444
+  s_ca952b2548a279::t_917251106e5aba 80-81
+  s_ca952b2548a279::t_46a685e2391440 151-170,177-180,217-218
+  s_ca952b2548a279::t_50166b25dbf2ee 374,376-381,394
+  s_ca952b2548a279::t_02d7bbee286457 70,72
+  s_ca952b2548a279::t_b785a8e9e99169 171-176
+  s_ca952b2548a279::t_5924e038133ad2 286-288,303-308
+  s_ca952b2548a279::t_b1cad7fbfb6f4c 276-280
+  s_ca952b2548a279::t_90ce2103e57567 84-89
+  s_ca952b2548a279::t_b4dbc68efea662 199-205,219-221
+  s_ca952b2548a279::t_383caa3593fd1e 114-128
+  s_ca952b2548a279::t_3c393e18336b91 445-451,466-468
+  s_ca952b2548a279::t_5dbfc5b7f00572 474-476
+  s_ca952b2548a279::t_f5e4d9b0033ed0 479,493-503
+  s_415ab668db447e::t_dbc9ee862cce4a 222
+  s_ca952b2548a279::t_21f4f33ba4c2b1 136-138,141-145,147
+  s_be150e0123928b::t_807dcb9ba8fa5f 504-505
+sqlsink/sink_internal_test.go
+  s_ca952b2548a279::t_ab2e3f5acb2152 267-351
+  s_ca952b2548a279::t_ca2ff6e9421476 13
+  s_ca952b2548a279::t_105f63298ab4da 100-200
+README.md
+  s_ca952b2548a279::t_3cc043f6e9bb01 205,207
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "aec472149cabf012f8962e9a748a8c57c25183a5",
+  "prompts": {},
+  "sessions": {
+    "s_415ab668db447e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3c875eb9-2e42-4044-8f73-7205f29c00d7",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    },
+    "s_be150e0123928b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "72c0c04d-2cc7-4b55-9ed9-ad352eb634fd",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    },
+    "s_ca952b2548a279": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "764258cf-8c8e-4985-8a77-c548fde34c49",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": null
+    }
+  }
+}

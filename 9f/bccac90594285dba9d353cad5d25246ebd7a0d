@@ -1,0 +1,31 @@
+sqlsink/sink.go
+  s_415ab668db447e::t_dbc9ee862cce4a 1-271
+README.md
+  s_415ab668db447e::t_becb0e188adc36 176-206,215
+sqlsink/doc.go
+  s_415ab668db447e::t_b6d8876da3cca5 1-26
+ARCHITECTURE.md
+  s_415ab668db447e::t_2fdc94eb83f801 78-83
+examples/sql-to-sql/main.go
+  s_415ab668db447e::t_967b6a4b614aef 1-94
+sqlsink/sink_test.go
+  s_415ab668db447e::t_7cc1ece2053331 1-332
+sqlsink/types.go
+  s_415ab668db447e::t_7c34491187e367 1-93
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9fbccac90594285dba9d353cad5d25246ebd7a0d",
+  "prompts": {},
+  "sessions": {
+    "s_415ab668db447e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3c875eb9-2e42-4044-8f73-7205f29c00d7",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    }
+  }
+}

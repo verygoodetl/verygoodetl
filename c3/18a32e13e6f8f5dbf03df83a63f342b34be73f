@@ -1,0 +1,46 @@
+sqlsink/doc.go
+  s_be150e0123928b::t_03d4bad3b3d278 16-21
+sqlsink/sink.go
+  s_be150e0123928b::t_06dc3ae1d3b463 172-174
+  s_be150e0123928b::t_805bbfe98a9e0d 119
+  s_be150e0123928b::t_d8d2bf50571457 276-285,289-290,292-294,298-303,308-318,321
+  s_be150e0123928b::t_318a719f4b5c96 182
+  s_be150e0123928b::t_fcfd73e07d801f 183-184
+  s_be150e0123928b::t_aa16cc88671321 151-154
+  s_be150e0123928b::t_a5f3e1df4dd0e7 177,185-188
+  s_be150e0123928b::t_584e32a0b58967 95-99
+  s_be150e0123928b::t_a052a4b944167e 305-307
+  s_be150e0123928b::t_372af4eaba9424 50-56
+  s_be150e0123928b::t_2ce5935b9df157 286-288
+  s_be150e0123928b::t_2e7b7fe278488c 120
+  s_be150e0123928b::t_ce43834c8c7dd3 322-323
+  s_be150e0123928b::t_aef2159ade7fc0 291,295-297,304,319-320
+  s_be150e0123928b::t_f66d509fb4c63d 169-171
+sqlsink/sink_test.go
+  s_be150e0123928b::t_0748eca1e23487 59-147
+  s_be150e0123928b::t_e8897a90a9f9db 6
+  s_be150e0123928b::t_6e3358802459b8 8
+  s_be150e0123928b::t_cc3fa0fbe01b6f 858-906
+  s_be150e0123928b::t_c6b861756b40f3 490-578
+  s_be150e0123928b::t_c14f3995fd334b 367-397
+  s_be150e0123928b::t_e3266d74db4a2a 691-768,939-966
+  s_be150e0123928b::t_18079a63743372 489,579-690
+  s_be150e0123928b::t_bc6a423b5a84b5 213-246
+  s_be150e0123928b::t_f7fdf8393c47ef 769-857,907-938
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c318a32e13e6f8f5dbf03df83a63f342b34be73f",
+  "prompts": {},
+  "sessions": {
+    "s_be150e0123928b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "72c0c04d-2cc7-4b55-9ed9-ad352eb634fd",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": null
+    }
+  }
+}

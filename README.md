@@ -173,6 +173,41 @@ matches := orders.Process(lookup)
 combined := pipeline.Merge(combiner, orders, matches)
 ```
 
+## SQL sink
+
+The `sqlsink` subpackage provides a `Sink` that writes batches to a SQL table via `database/sql`, as a multi-row `INSERT` per batch. Unlike `sqlsource`, it doesn't need a caller-supplied schema — column names and order come from the schema of the first batch it receives, since that schema is already explicit rather than inferred from a driver.
+
+```go
+import (
+    "database/sql"
+
+    _ "modernc.org/sqlite" // or any database/sql driver
+
+    "github.com/verygoodetl/verygoodetl/sqlsink"
+)
+
+db, err := sql.Open("sqlite", "file:orders.db")
+if err != nil {
+    return err
+}
+
+orders.To(sqlsink.New(db, "orders"))
+```
+
+Table and column names — including the field names of the schema `sqlsink` derives them from — are written directly into the generated SQL text, unescaped, never as bound parameters: never build that schema, or pass a table/column name, sourced from untrusted input such as a CSV header or a third-party API response.
+
+Conflict handling is opt-in and off by default: without it, a conflicting row fails its batch's transaction like any other constraint violation. `ON CONFLICT`/`ON DUPLICATE KEY` syntax differs enough across dialects (PostgreSQL and SQLite share `ON CONFLICT ... DO UPDATE`; MySQL uses `ON DUPLICATE KEY UPDATE`; SQL Server and Oracle have neither) that `sqlsink` doesn't try to generate it — `WithUpsertClause` takes the caller's own trailing clause and appends it verbatim to the generated `INSERT`:
+
+```go
+orders.To(sqlsink.New(db, "orders", sqlsink.WithUpsertClause(
+    "ON CONFLICT (id) DO UPDATE SET name = excluded.name",
+)))
+```
+
+`database/sql` also has no standard placeholder syntax: `WithPlaceholder(sqlsink.Dollar)` switches from the default `?` markers to PostgreSQL's `$1, $2, ...`. For a marker syntax neither `Question` nor `Dollar` covers — SQL Server's `@p1, @p2, ...` or Oracle's `:1, :2, ...` — `WithPlaceholderFunc` takes a caller-supplied `func(n int) string` instead, which overrides `WithPlaceholder` entirely when set. A single generated `INSERT` is also capped at `WithMaxPlaceholders` (900 by default, to stay under SQLite's default parameter limit) and split across multiple statements — still within one transaction per batch — for a batch large enough to exceed it. `WithMaxRowsPerConsume` is a separate, opt-in cap on how many rows a single `Consume` call may write at all: unset by default (no cap), and when set, a batch whose row count exceeds it is rejected with an error before any SQL is executed, rather than being chunked or silently truncated.
+
+By default, table and column names are never quoted, so each one must be a valid unquoted SQL identifier and must not be (case-insensitively) one of a small set of common reserved words (e.g. `order`, `user`, `key`); see `isValidIdentifier`'s doc comment in `sqlsink/sink.go` for the exact rules and word list. That word list is the `sqlReservedWords` map in `sqlsink/sink.go`, and it's explicitly non-exhaustive — a reserved word missing from it will pass this check but can still fail at the driver with a SQL syntax error, so check that list first if an unquoted identifier fails unexpectedly. `WithAdditionalReservedWords` extends that non-exhaustive list with dialect-specific words a particular caller's target database also reserves, scoped to that one `Sink` instance rather than shared globally. `WithIdentifierQuote` is the escape hatch for a name that needs quoting — e.g. a reserved word in only one target dialect, or a name with a character outside the unquoted allowlist — by supplying a function that `Sink` applies to every table and column identifier instead of running those checks. That function must escape any embedded quote character itself, since whatever it returns is written directly into the generated SQL text — e.g. for PostgreSQL/SQLite-style double-quoting, `` func(id string) string { return `"` + strings.ReplaceAll(id, `"`, `""`) + `"` } ``, not the unescaped `` `"` + id + `"` `` form.
+
 ## Examples
 
 The `examples` directory has complete, runnable programs (`go run ./examples/<name>`) for common pipeline shapes:
@@ -181,6 +216,7 @@ The `examples` directory has complete, runnable programs (`go run ./examples/<na
 - `sql-to-sink` — a SQL source with no archival step.
 - `sql-to-archive` — extract from SQL, archive the raw batches, and process the same stream into a reporting sink.
 - `sql-lookup-merge` — query two unconnected databases and combine the results in Go via `sqlsource.Lookup` and `Pipeline.Merge`.
+- `sql-to-sql` — a SQL source feeding a `sqlsink.Sink`, with `WithUpsertClause` opted in.
 
 ## Batch ownership
 
@@ -190,7 +226,6 @@ Batches are immutable from the runtime's point of view. This allows a batch to f
 
 ## What is deliberately not here yet
 
-- SQL sinks
 - CSV source (reading)
 - expression or vector-compute DSL
 - joins, aggregation, sorting, and other higher-level processors

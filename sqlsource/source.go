@@ -15,16 +15,13 @@ import (
 const defaultBatchSize = 1024
 
 // Source is an etl.Source that runs a SQL query and emits the results as
-// Arrow batches, batchSize rows at a time. It holds no per-run state, so a
-// Source may be reused across multiple pipeline runs, including
-// concurrently — database/sql's *sql.DB is itself a connection pool
-// designed for concurrent use.
+// Arrow batches, batchSize rows at a time. It holds no per-run state, so it
+// may be reused across multiple pipeline runs, including concurrently.
 //
-// Run holds one connection checked out from db's pool for as long as its
-// query's *sql.Rows stays open — from QueryContext until every batch has
-// been scanned — which for a large or slow-draining result can span the
-// entire pipeline run. See Lookup's doc for the deadlock this creates if a
-// downstream Lookup is given the same db.
+// Run holds one connection from db's pool open for as long as its query's
+// *sql.Rows stays open — from QueryContext until every batch is scanned,
+// potentially the whole pipeline run. See Lookup's doc for the deadlock this
+// creates if a downstream Lookup shares the same db.
 type Source struct {
 	db        *sql.DB
 	query     string
@@ -62,8 +59,7 @@ func WithBatchSize(n int) Option {
 // WithAllocator sets the memory.Allocator used to build batches. Defaults to
 // memory.DefaultAllocator. A nil mem — including a typed-nil concrete
 // allocator, e.g. WithAllocator((*memory.CheckedAllocator)(nil)) — is
-// ignored, keeping the default, rather than being stored and panicking on
-// first use inside the batch builder.
+// ignored rather than stored, avoiding a panic on first use in the builder.
 func WithAllocator(mem memory.Allocator) Option {
 	return func(s *Source) {
 		if !nilPointerValue(mem) {
@@ -115,19 +111,13 @@ func New(db *sql.DB, query string, schema *arrow.Schema, opts ...Option) (*Sourc
 	return s, nil
 }
 
-// nilPointerValue reports whether v is either an untyped nil interface (v ==
-// nil) or a typed nil pointer wrapped in a non-nil interface — e.g. a caller
-// building arrow.Field{Type: (*arrow.TimestampType)(nil)} (which
-// arrow.NewSchema itself does not reject, since it only checks field.Type ==
-// nil too) or calling WithAllocator((*memory.CheckedAllocator)(nil)). A plain
-// v == nil check misses both cases: the interface carries a concrete type
-// descriptor and a nil value pointer, so it compares != nil even though
-// using it — type-asserting back to *arrow.TimestampType (or similar) and
-// calling a method, or converterFor accessing dt.ID() — panics on the nil
-// receiver. arrow-go's DataType and memory.Allocator implementations are
-// essentially all pointer types, so checking Kind() == reflect.Ptr covers
-// them; Kind is checked before IsNil because IsNil panics on kinds that
-// don't support it.
+// nilPointerValue reports whether v is nil or a typed-nil pointer wrapped in
+// a non-nil interface (e.g. arrow.Field{Type: (*arrow.TimestampType)(nil)} or
+// WithAllocator((*memory.CheckedAllocator)(nil))). A plain v == nil check
+// misses the latter: the interface carries a concrete type descriptor, so it
+// compares != nil even though using it later panics on the nil receiver.
+// Kind is checked before IsNil since IsNil panics on kinds that don't
+// support it.
 func nilPointerValue(v any) bool {
 	if v == nil {
 		return true

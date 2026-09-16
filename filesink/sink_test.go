@@ -36,11 +36,9 @@ func batch(t *testing.T, schema *arrow.Schema, values ...int64) etl.Batch {
 	return etl.NewBatch(intRecord(t, schema, values...))
 }
 
-// batchThenErrorSource sends one pre-built batch, then fails. It simulates
-// an upstream Source (or sibling Processor) failing partway through a
-// stream after a downstream Sink has already consumed at least one batch —
-// as opposed to errorSource (in the root package's tests), which fails
-// before sending anything.
+// batchThenErrorSource sends one pre-built batch, then fails — simulating
+// an upstream failure after a downstream Sink already consumed a batch,
+// unlike errorSource (root package) which fails before sending anything.
 type batchThenErrorSource struct {
 	batch etl.Batch
 	err   error
@@ -167,15 +165,10 @@ func TestSinkZeroBatchesWithSchemaWritesEmptyFile(t *testing.T) {
 }
 
 // TestSinkZeroBatchesWithSchemaArrowIPCWritesEmptyFile locks in that
-// ArrowIPC + WithSchema + zero batches succeeds and produces a valid,
-// readable-back empty IPC file, rather than failing with the IPC writer's
-// "could not write empty file" error. That error is returned by
-// (*ipc.FileWriter).Close only when the underlying start-of-stream write
-// itself fails (e.g. a broken io.Writer) — Close starts the writer lazily if
-// it hasn't been started yet, and starting with zero records writes just the
-// schema header, which succeeds fine. So a schema-only, zero-record Finish
-// (see Sink.Finish, which calls Close without ever calling Write)
-// does not hit that error path.
+// ArrowIPC + WithSchema + zero batches produces a valid, readable empty
+// file rather than IPC's "could not write empty file" error: Close starts
+// the writer lazily, and starting with zero records just writes the schema
+// header.
 func TestSinkZeroBatchesWithSchemaArrowIPCWritesEmptyFile(t *testing.T) {
 	bucket := memblob.OpenBucket(nil)
 	defer bucket.Close()
@@ -205,11 +198,9 @@ func TestSinkZeroBatchesWithSchemaArrowIPCWritesEmptyFile(t *testing.T) {
 	}
 }
 
-// nilSchemaBatch is an etl.Batch whose Schema method returns nil. It's a
-// plain, non-nil struct value — unlike a nil-backed pointer/map/slice/
-// func/chan Batch, which the pipeline runtime itself now rejects — so it
-// reaches a Sink's Consume unfiltered, exercising this package's own
-// handling of a schema-less batch specifically.
+// nilSchemaBatch is a plain, non-nil Batch whose Schema() returns nil —
+// unlike a nil-backed Batch, which the pipeline runtime itself now
+// rejects — so it reaches Consume unfiltered.
 type nilSchemaBatch struct{}
 
 func (nilSchemaBatch) Schema() *arrow.Schema { return nil }
@@ -219,10 +210,8 @@ func (nilSchemaBatch) Retain()               {}
 func (nilSchemaBatch) Release()              {}
 
 // TestSinkConsumeNilSchemaBatchReturnsError is a regression test: Consume
-// used to pass b.Schema() straight into open, which hands it to
-// Format.NewWriter — every current Format implementation calls a method on
-// the schema (e.g. NumFields) without a nil check, so a nil schema panicked
-// instead of failing the pipeline with an ordinary error.
+// used to hand a nil schema straight to Format.NewWriter, which panics
+// since no Format checks for one.
 func TestSinkConsumeNilSchemaBatchReturnsError(t *testing.T) {
 	bucket := memblob.OpenBucket(nil)
 	defer bucket.Close()
@@ -237,12 +226,8 @@ func TestSinkConsumeNilSchemaBatchReturnsError(t *testing.T) {
 }
 
 // TestSinkConsumeSecondBatchNilSchemaReturnsError is a regression test: the
-// nil-schema check used to live inside Consume's `if !s.started` branch, so
-// it only ran while opening the format writer on the first batch. A batch
-// with a nil schema arriving on a later call skipped the check entirely and
-// went straight to rw.Write(b.Record()), which panicked the same way a nil
-// schema on the first batch used to (see TestSinkConsumeNilSchemaBatchReturnsError
-// above) since b.Record() is also nil on a nilSchemaBatch.
+// nil-schema check used to run only inside the `if !s.started` branch, so a
+// nil schema on a later batch skipped it and panicked.
 func TestSinkConsumeSecondBatchNilSchemaReturnsError(t *testing.T) {
 	bucket := memblob.OpenBucket(nil)
 	defer bucket.Close()
@@ -260,11 +245,9 @@ func TestSinkConsumeSecondBatchNilSchemaReturnsError(t *testing.T) {
 }
 
 // TestSinkNewNilBucketReturnsErrorInsteadOfPanicking is a regression test:
-// open used to decide bucket-backed vs. writer-backed by checking
-// s.bucket == nil, so New(nil, ...) — a plain caller mistake, not a request
-// to go through NewToWriter — was misclassified as writer-backed and handed
-// a nil s.w to the format writer, panicking deep inside it instead of
-// failing with an ordinary error.
+// open used to decide bucket- vs. writer-backed from s.bucket == nil, so
+// New(nil, ...) was misclassified as writer-backed and panicked on a nil
+// s.w.
 func TestSinkNewNilBucketReturnsErrorInsteadOfPanicking(t *testing.T) {
 	schema := fieldSchema("value")
 	p := etl.New()
@@ -277,10 +260,7 @@ func TestSinkNewNilBucketReturnsErrorInsteadOfPanicking(t *testing.T) {
 }
 
 // TestSinkNewToWriterNilWriterReturnsErrorInsteadOfPanicking mirrors
-// TestSinkNewNilBucketReturnsErrorInsteadOfPanicking for the other
-// construction mode: NewToWriter(nil, ...) must fail with an ordinary error
-// rather than panicking when the format writer tries to use the nil
-// io.Writer.
+// TestSinkNewNilBucketReturnsErrorInsteadOfPanicking for NewToWriter.
 func TestSinkNewToWriterNilWriterReturnsErrorInsteadOfPanicking(t *testing.T) {
 	schema := fieldSchema("value")
 	p := etl.New()
@@ -293,10 +273,8 @@ func TestSinkNewToWriterNilWriterReturnsErrorInsteadOfPanicking(t *testing.T) {
 }
 
 // TestSinkNewNilBucketZeroBatchesReturnsErrorInsteadOfSucceeding is a
-// regression test: Finish used to return nil before ever checking
-// constructErr when the sink received no batches and had no explicit
-// schema, so an invalid Sink (e.g. New(nil, ...)) silently reported success
-// as long as it happened to receive no input.
+// regression test: Finish used to return nil before checking constructErr
+// when no batch arrived, so an invalid Sink could silently "succeed".
 func TestSinkNewNilBucketZeroBatchesReturnsErrorInsteadOfSucceeding(t *testing.T) {
 	p := etl.New()
 	p.From(batchesSource{}).To(filesink.New(nil, "orders.parquet", filesink.Parquet()))
@@ -306,20 +284,16 @@ func TestSinkNewNilBucketZeroBatchesReturnsErrorInsteadOfSucceeding(t *testing.T
 	}
 }
 
-// nilPtrWriter is an io.Writer whose zero value is a typed-nil pointer:
-// (*nilPtrWriter)(nil) satisfies io.Writer via the pointer receiver below,
-// so it compares != nil as an interface value, but calling Write panics on
-// the nil receiver.
+// nilPtrWriter's zero value is a typed-nil pointer that satisfies io.Writer
+// (via the pointer receiver below) and so compares != nil as an interface,
+// but Write would panic on the nil receiver.
 type nilPtrWriter struct{}
 
 func (w *nilPtrWriter) Write(p []byte) (int, error) { return len(p), nil }
 
 // TestSinkNewToWriterTypedNilWriterReturnsErrorInsteadOfPanicking is a
-// regression test: NewToWriter only checked w == nil, which misses a
-// typed-nil pointer wrapped in the io.Writer interface. Such a value is
-// != nil by interface comparison and used to bypass the construction-error
-// check entirely, panicking once the format writer's first Write call
-// reached the nil receiver.
+// regression test: NewToWriter only checked w == nil, missing a typed-nil
+// pointer, which used to bypass validation and panic on first Write.
 func TestSinkNewToWriterTypedNilWriterReturnsErrorInsteadOfPanicking(t *testing.T) {
 	schema := fieldSchema("value")
 	var typedNil *nilPtrWriter
@@ -333,9 +307,7 @@ func TestSinkNewToWriterTypedNilWriterReturnsErrorInsteadOfPanicking(t *testing.
 }
 
 // TestSinkNewNilFormatReturnsErrorInsteadOfPanicking is a regression test:
-// New stored a nil format directly on the Sink with no validation, so the
-// first non-empty pipeline run panicked inside open, which calls
-// s.format.NewWriter on the nil interface.
+// New used to store a nil format with no validation, panicking inside open.
 func TestSinkNewNilFormatReturnsErrorInsteadOfPanicking(t *testing.T) {
 	bucket := memblob.OpenBucket(nil)
 	defer bucket.Close()
@@ -365,12 +337,9 @@ func TestSinkNewToWriterNilFormatReturnsErrorInsteadOfPanicking(t *testing.T) {
 	}
 }
 
-// nilPtrFormat is a filesink.Format whose zero value is a typed-nil
-// pointer: (*nilPtrFormat)(nil) satisfies filesink.Format via the
-// pointer-receiver methods below, so it compares != nil as an interface
-// value, but format.NewWriter is never actually reached because New's own
-// nil-format check (isNilFormat) is expected to catch it first, mirroring
-// nilPtrWriter below for io.Writer.
+// nilPtrFormat's zero value is a typed-nil pointer that satisfies
+// filesink.Format via the pointer-receiver methods below, mirroring
+// nilPtrWriter for io.Writer.
 type nilPtrFormat struct{}
 
 func (f *nilPtrFormat) ContentType() string { return "application/octet-stream" }
@@ -380,9 +349,8 @@ func (f *nilPtrFormat) NewWriter(*arrow.Schema, io.Writer) (filesink.RecordWrite
 }
 
 // TestSinkNewTypedNilFormatReturnsErrorInsteadOfPanicking is a regression
-// test: a plain `format == nil` check misses a typed-nil pointer wrapped in
-// the Format interface, since the interface carries a concrete type
-// descriptor and a nil value pointer and so compares != nil.
+// test: a plain format == nil check misses a typed-nil pointer wrapped in
+// the interface.
 func TestSinkNewTypedNilFormatReturnsErrorInsteadOfPanicking(t *testing.T) {
 	bucket := memblob.OpenBucket(nil)
 	defer bucket.Close()
@@ -398,20 +366,16 @@ func TestSinkNewTypedNilFormatReturnsErrorInsteadOfPanicking(t *testing.T) {
 	}
 }
 
-// nilFuncWriter is a func-typed io.Writer. Calling a nil func value panics
-// unconditionally on invocation, so a nil nilFuncWriter is exactly the kind
-// of non-pointer nil-capable Writer isNilWriter must also reject — a plain
-// Kind() == reflect.Ptr check (mirroring isNilValue in the root etl
-// package) would miss it, since a func isn't a pointer.
+// nilFuncWriter is a func-typed io.Writer; calling a nil func value panics
+// unconditionally, so it's the non-pointer nil-capable case isNilWriter
+// must also reject.
 type nilFuncWriter func([]byte) (int, error)
 
 func (w nilFuncWriter) Write(p []byte) (int, error) { return w(p) }
 
 // TestSinkNewToWriterNilFuncWriterReturnsErrorInsteadOfPanicking is a
-// regression test for isNilWriter's broadened nil-capable-kind check: before
-// the fix, isNilWriter only checked Kind() == reflect.Ptr, so a nil
-// nilFuncWriter sailed past NewToWriter's construction check and panicked
-// the moment writeOnly{w}.Write called the nil func value.
+// regression test for isNilWriter's broadened check: it used to only check
+// Kind() == reflect.Ptr, missing a nil func value.
 func TestSinkNewToWriterNilFuncWriterReturnsErrorInsteadOfPanicking(t *testing.T) {
 	schema := fieldSchema("value")
 	var typedNil nilFuncWriter
@@ -424,11 +388,9 @@ func TestSinkNewToWriterNilFuncWriterReturnsErrorInsteadOfPanicking(t *testing.T
 	}
 }
 
-// nilRecordBatch is an etl.Batch with a valid, non-nil schema but whose
-// Record method returns nil directly — unlike nilSchemaBatch above, whose
-// nil Schema() is caught by Consume's separate schema check before its
-// Record() (also nil) is ever reached. This exercises the record check on
-// its own, for a batch that would otherwise sail past the schema check.
+// nilRecordBatch has a valid schema but Record() returns nil directly —
+// unlike nilSchemaBatch, whose nil Schema() is caught first — exercising
+// the record check on its own.
 type nilRecordBatch struct {
 	schema *arrow.Schema
 }
@@ -440,11 +402,8 @@ func (b nilRecordBatch) Retain()               {}
 func (b nilRecordBatch) Release()              {}
 
 // TestSinkConsumeNilRecordBatchReturnsError is a regression test: Consume
-// checked b.Schema() for nil but never checked b.Record(), even though the
-// same "every Format implementation dereferences it with no nil check"
-// reasoning documented for the schema check applies equally to the record —
-// rw.Write(b.Record()) panicked on a nil record instead of failing the
-// pipeline with an ordinary error.
+// checked b.Schema() for nil but not b.Record(), so rw.Write panicked on a
+// nil record.
 func TestSinkConsumeNilRecordBatchReturnsError(t *testing.T) {
 	bucket := memblob.OpenBucket(nil)
 	defer bucket.Close()
@@ -512,24 +471,18 @@ func (w *failingWriter) Write(arrow.Record) error {
 func (w *failingWriter) Close() error { return nil }
 
 // TestSinkMidStreamFailureAbortsWithoutCommitting is a regression test for
-// abort's cancel-then-Close cleanup, not just for "no file was ever
-// committed": failingWriter never writes any bytes to the underlying blob
-// writer, and fileblob only ever renames its temp file into place inside
-// Close, which only a successful Finish reaches — so absence of the final
-// "orders.bin" is true regardless of whether abort does anything at all,
-// and would pass even with abort's body deleted entirely.
+// abort's cleanup, not just for "no final file exists": failingWriter never
+// touches the underlying blob writer, and fileblob only renames its temp
+// file into place on a successful Close — so the final file's absence would
+// hold even with abort's body deleted.
 //
-// NoTempDir makes fileblob create its temp file (e.g.
-// "orders.bin.<ts>.tmp") directly in dir instead of os.TempDir(), and
-// fileblob's own Close only removes that temp file — it does not rename it,
-// since it checks ctx.Err() and bails out before the rename once the
-// context passed to NewWriter was canceled. So a working abort (cancel the
-// write context, then Close the blob writer) leaves dir completely empty,
-// while a broken abort (e.g. a no-op) leaves the still-open, never-closed
-// temp file behind: fileblob has no other mechanism to clean it up once
-// Close is never called. Asserting dir is empty, rather than only that the
-// final key doesn't exist, is what actually distinguishes cleanup running
-// from cleanup never being invoked at all.
+// NoTempDir puts fileblob's temp file directly in dir (instead of
+// os.TempDir()); fileblob's Close removes that temp file but only after
+// checking ctx.Err(), so a canceled write context skips the rename. A
+// working abort (cancel, then Close) leaves dir empty; a no-op abort leaves
+// the never-closed temp file behind, since nothing else cleans it up.
+// Asserting dir is empty is what actually distinguishes cleanup running
+// from never being invoked.
 func TestSinkMidStreamFailureAbortsWithoutCommitting(t *testing.T) {
 	dir := t.TempDir()
 	bucket, err := fileblob.OpenBucket(dir, &fileblob.Options{NoTempDir: true})
@@ -562,16 +515,11 @@ func TestSinkMidStreamFailureAbortsWithoutCommitting(t *testing.T) {
 	}
 }
 
-// abortSpySink wraps a real *filesink.Sink, delegating Consume/Finish to it
-// unchanged but recording whether the runtime actually called Abort. A bare
-// bucket.Exists-after-failure check can't distinguish "Abort ran and
-// canceled the in-flight writer" from "Abort was never called, and the
-// object simply never got committed because Finish also never ran" — both
-// produce an absent object. Overriding just Abort here (Consume/Finish are
-// promoted from the embedded *filesink.Sink) lets a test assert the former
-// specifically, the same way the root package's abortableSink does for a
-// stub sink in TestUpstreamFailureCallsAbortOnDownstreamSink
-// (pipeline_test.go).
+// abortSpySink wraps a real *filesink.Sink, recording whether the runtime
+// called Abort — a bare bucket.Exists check alone can't distinguish "Abort
+// ran and canceled the writer" from "Abort was never called and Finish
+// also never ran," both of which leave no object. Mirrors the root
+// package's abortableSink (pipeline_test.go).
 type abortSpySink struct {
 	*filesink.Sink
 	aborted bool
@@ -583,18 +531,11 @@ func (s *abortSpySink) Abort() {
 }
 
 // TestSinkAbortCalledOnUpstreamFailureAfterConsumingABatch exercises the
-// runtime-invoked Sink.Abort method, as opposed to
-// TestSinkMidStreamFailureAbortsWithoutCommitting and
-// TestSinkSchemaMismatchAbortsWithoutCommitting above, which only exercise
-// Sink's internal abort() reached from Consume's own error return. Here
-// the failure originates upstream, in the Source, so the pipeline runtime
-// — not Consume — is what calls Abort() once it determines this Sink's
-// Finish will never run (see the pipeline runtime's abortIfAborter
-// helper). The Sink has already opened its blob writer and
-// consumed one batch by the time that happens, so this also verifies Abort
-// was actually invoked (via abortSpySink) and that it results in no
-// committed object, rather than the object simply being absent because
-// Finish never ran regardless of whether Abort did anything.
+// runtime-invoked Sink.Abort path, as opposed to the Consume-triggered
+// abort() exercised by TestSinkMidStreamFailureAbortsWithoutCommitting and
+// TestSinkSchemaMismatchAbortsWithoutCommitting: here the failure
+// originates upstream, so the pipeline runtime calls Abort() once it
+// determines Finish will never run.
 func TestSinkAbortCalledOnUpstreamFailureAfterConsumingABatch(t *testing.T) {
 	bucket := memblob.OpenBucket(nil)
 	defer bucket.Close()
@@ -722,11 +663,9 @@ func TestSinkToWriterZeroBatchesNoSchemaWritesNothing(t *testing.T) {
 	}
 }
 
-// TestSinkToWriterNeverClosesWriter locks in NewToWriter's documented
-// contract that the destination writer is the caller's own to manage: a
-// Sink writing Parquet (whose underlying writer closes any io.Writer it's
-// given that also implements io.Closer, per the writeOnly type's doc
-// comment) must not let that reach the caller-supplied writer.
+// TestSinkToWriterNeverClosesWriter locks in NewToWriter's contract that
+// the destination writer is the caller's to manage, even though Parquet's
+// underlying writer closes any io.Writer that also implements io.Closer.
 func TestSinkToWriterNeverClosesWriter(t *testing.T) {
 	w := &closeTrackingWriter{Writer: &bytes.Buffer{}}
 	schema := fieldSchema("value")
@@ -743,12 +682,9 @@ func TestSinkToWriterNeverClosesWriter(t *testing.T) {
 	}
 }
 
-// TestSinkToWriterAbortAfterUpstreamFailureIsSafe exercises the
-// runtime-invoked Abort path (see TestSinkAbortCalledOnUpstreamFailureAfterConsumingABatch
-// above, its bucket-backed counterpart) for a writer-path Sink, where
-// abort()'s bucket-specific work (canceling the write context, closing the
-// blob writer) is all nil-guarded and so should be a safe no-op rather than
-// a nil-pointer panic.
+// TestSinkToWriterAbortAfterUpstreamFailureIsSafe mirrors
+// TestSinkAbortCalledOnUpstreamFailureAfterConsumingABatch for a
+// writer-path Sink, where abort()'s bucket-specific work is nil-guarded.
 func TestSinkToWriterAbortAfterUpstreamFailureIsSafe(t *testing.T) {
 	var buf bytes.Buffer
 	schema := fieldSchema("value")

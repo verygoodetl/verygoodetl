@@ -85,8 +85,6 @@ func TestLookupKeysFloatDedupeIsBitExact(t *testing.T) {
 	}
 }
 
-// TestLookupKeysBinaryDedupe checks that Binary columns dedupe on their
-// exact byte content.
 func TestLookupKeysBinaryDedupe(t *testing.T) {
 	schema := arrow.NewSchema([]arrow.Field{{Name: "v", Type: arrow.BinaryTypes.Binary}}, nil)
 	b := array.NewBinaryBuilder(memory.DefaultAllocator, arrow.BinaryTypes.Binary)

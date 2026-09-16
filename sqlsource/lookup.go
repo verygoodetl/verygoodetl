@@ -13,40 +13,31 @@ import (
 
 // QueryGenerator builds a query and its parameter args from an incoming
 // batch — e.g. extracting a key column's values and building an IN clause.
-// The number of placeholders in query must match len(args); dialect-specific
-// placeholder syntax (?, $1, ...) is the caller's responsibility, matching
-// how a Source's query is entirely caller-authored.
+// The number of placeholders in query must match len(args); placeholder
+// syntax (?, $1, ...) is the caller's responsibility.
 //
-// If generate filters the batch down to nothing worth looking up (e.g.
-// every row is excluded by some condition), return a nil or empty args —
-// Lookup skips the query in that case rather than running whatever query
-// was returned with zero parameters, so a caller never needs a dummy
-// placeholder value just to keep an "IN (...)" clause non-empty.
+// Return a nil or empty args if the batch has nothing worth looking up:
+// Lookup skips the query rather than running one with zero parameters, so
+// callers never need a dummy value to keep an "IN (...)" clause non-empty.
 type QueryGenerator func(batch etl.Batch) (query string, args []any, err error)
 
 // Lookup is an etl.Processor that runs a dynamically generated query per
 // incoming batch — for example, using a batch of IDs from one database to
 // look up matching rows in a different, unconnected database — and emits
 // the results as new Arrow batches. Lookup replaces the stream rather than
-// merging with the original batch: to combine the original batch's data
-// with a Lookup's results, attach both to a Pipeline.Merge and do the
-// combination there.
+// merging with the original batch; use Pipeline.Merge to combine both.
 //
-// db must not be a connection pool shared with an upstream Source (or any
-// other stage) that may still hold an open *sql.Rows against the same
-// database when this Lookup runs: an etl.Pipeline runs every stage
-// concurrently in its own goroutine, so Lookup's QueryContext call races a
-// Source that is still streaming rows from an earlier query on the same
-// db. If that db's pool is limited to a single open connection — a common
-// setting for SQLite — the one connection available is the one the
-// upstream Rows is holding, and QueryContext blocks forever waiting for a
-// connection nothing will ever release, deadlocking the whole pipeline.
-// Give Lookup its own *sql.DB — a second pool opened against the same
-// database file works fine — rather than reusing an upstream stage's db.
+// db must not be a pool shared with an upstream Source (or other stage)
+// that may still hold an open *sql.Rows on the same database: etl.Pipeline
+// runs every stage concurrently, so Lookup's QueryContext can race a Source
+// still streaming an earlier query on the same db. If the pool allows only
+// one open connection — common for SQLite — that connection is the one the
+// upstream Rows holds, so QueryContext blocks forever and deadlocks the
+// pipeline. Give Lookup its own *sql.DB (a second pool against the same
+// database file works fine) rather than reusing an upstream stage's db.
 //
-// A batch with zero rows, or whose generate returns zero args, is skipped
-// without running a query, since an empty lookup (e.g. an "IN ()" clause)
-// is invalid SQL for most databases.
+// A batch with zero rows, or whose generate returns zero args, is skipped:
+// an empty lookup (e.g. "IN ()") is invalid SQL for most databases.
 type Lookup struct {
 	db        *sql.DB
 	generate  QueryGenerator
@@ -75,9 +66,8 @@ func WithLookupBatchSize(n int) LookupOption {
 // WithLookupAllocator sets the memory.Allocator used to build result
 // batches. Defaults to memory.DefaultAllocator. A nil mem — including a
 // typed-nil concrete allocator, e.g.
-// WithLookupAllocator((*memory.CheckedAllocator)(nil)) — is ignored, keeping
-// the default, rather than being stored and panicking on first use inside
-// the batch builder.
+// WithLookupAllocator((*memory.CheckedAllocator)(nil)) — is ignored rather
+// than stored, avoiding a panic on first use in the builder.
 func WithLookupAllocator(mem memory.Allocator) LookupOption {
 	return func(l *Lookup) {
 		if !nilPointerValue(mem) {
@@ -91,10 +81,8 @@ func WithLookupAllocator(mem memory.Allocator) LookupOption {
 // generate produces must return exactly len(schema.Fields()) columns, in
 // the same order as the schema's fields.
 //
-// Every field in schema must be one of the types this package supports
-// (Int64, Float64, Boolean, String, Binary, Timestamp); NewLookup returns
-// an error immediately for any other field type, rather than failing later
-// when a query runs.
+// Schema fields are restricted the same as in New (see its doc); NewLookup
+// returns an error immediately for an unsupported field type.
 func NewLookup(db *sql.DB, generate QueryGenerator, schema *arrow.Schema, opts ...LookupOption) (*Lookup, error) {
 	if db == nil {
 		return nil, fmt.Errorf("sqlsource: NewLookup called with a nil db")
@@ -147,11 +135,7 @@ func (l *Lookup) Process(ctx context.Context, b etl.Batch, out etl.Output) error
 		return fmt.Errorf("sqlsource: generate query: %w", err)
 	}
 	if len(args) == 0 {
-		// generate filtered the batch down to nothing to look up (e.g. every
-		// row was excluded by some caller-side condition). Skip the query
-		// rather than running whatever generate returned for zero args,
-		// which for a query like "WHERE id IN ()" would be invalid SQL.
-		return nil
+		return nil // nothing to look up; see QueryGenerator.
 	}
 
 	rows, err := l.db.QueryContext(ctx, query, args...)

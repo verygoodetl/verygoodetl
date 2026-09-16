@@ -72,11 +72,9 @@ func TestContextCancellationCancelsGraphAndSkipsFinish(t *testing.T) {
 	}
 }
 
-// danglingLoopSource sends batches in an unbounded loop and relies solely on
-// Output.Send's returned error to learn about cancellation, exactly the
-// pattern etl.Source's doc comment endorses ("Run must return any error from
-// Output.Send... a swallowed Send error can prevent the pipeline from
-// unwinding on cancellation or failure"). It never checks ctx itself.
+// danglingLoopSource sends batches in an unbounded loop, relying solely on
+// Output.Send's returned error to learn about cancellation (see Source).
+// It never checks ctx itself.
 type danglingLoopSource struct {
 	started chan struct{}
 	b       Batch
@@ -94,14 +92,9 @@ func (s *danglingLoopSource) Run(ctx context.Context, out Output) error {
 }
 
 // TestSendReportsCancellationWithNoDownstreamEdges is a regression test:
-// Output.Send's cancellation check lived only inside its per-edge select, so
-// a stage with zero outgoing edges — a dangling Process() branch, or (as
-// here) p.From(src) with nothing ever attached — skipped that loop entirely
-// and Send unconditionally returned nil, no matter how long ctx had been
-// canceled. A source that (like danglingLoopSource, and like the pattern
-// etl.Source's own doc comment endorses) depends entirely on Send's returned
-// error to know when to stop would then loop forever, and Run would never
-// return. Send must check ctx even when there are no edges to send to.
+// Send's cancellation check lived only inside its per-edge loop, so a stage
+// with zero outgoing edges (here, a From with nothing attached) never
+// observed it and looped forever. Send must check ctx even with no edges.
 func TestSendReportsCancellationWithNoDownstreamEdges(t *testing.T) {
 	p := New()
 	src := &danglingLoopSource{started: make(chan struct{}), b: intBatch(t, 1)}
@@ -129,18 +122,12 @@ func TestCompletedWorkIsNotReportedAsCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	// errorSource{err: nil}'s Run returns immediately without ever touching
-	// ctx or Output, so it reliably returns nil here regardless of ctx's
-	// state. That isolates the invariant under test: Run reports success
-	// whenever every stage's own Run/Process/Finish returns nil, regardless
-	// of whether the caller separately canceled ctx. A stage that actually
-	// depends on ctx to do its work (e.g. cancelSource above) still reports
-	// its own error when canceled, and that error — not the mere fact that
-	// ctx was canceled — is what Run returns; see
-	// TestContextCancellationCancelsGraphAndSkipsFinish. (A dangling source
-	// with no downstream stage does not qualify for this: Output.Send still
-	// checks ctx even with zero edges, precisely so a source that only
-	// learns about cancellation via Send's returned error can still stop.)
+	// errorSource{err: nil} never touches ctx or Output, so it reliably
+	// returns nil regardless of ctx's state — isolating the invariant: Run
+	// reports success whenever every stage returns nil, even under a
+	// concurrent ctx cancellation. A stage that does depend on ctx (e.g.
+	// cancelSource) still reports its own error when canceled; see
+	// TestContextCancellationCancelsGraphAndSkipsFinish.
 	p := New()
 	p.From(errorSource{err: nil})
 

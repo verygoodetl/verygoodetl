@@ -11,17 +11,15 @@ import (
 )
 
 // LookupKeys extracts the non-null values from column i of batch's Record,
-// with duplicates removed (first occurrence kept) — ready to use as the
-// args for an "IN (...)" clause built inside a QueryGenerator. Supports the
-// same column types as Source/Lookup schemas (Int64, Float64, Boolean,
-// String, Binary, Timestamp). A Timestamp column's values are returned as
-// time.Time (converted using the column's declared unit), not as the
-// underlying arrow.Timestamp epoch integer, so they can be passed straight
-// to (*sql.DB).QueryContext like any other time.Time argument.
+// deduped (first occurrence kept) — ready to use as the args for an
+// "IN (...)" clause built inside a QueryGenerator. Supports the same column
+// types as a Source/Lookup schema (see New's doc). A Timestamp column's
+// values are returned as time.Time, not the underlying arrow.Timestamp epoch
+// integer, so they pass straight to (*sql.DB).QueryContext like any other
+// time.Time arg.
 //
-// Building the placeholder string for those args (e.g. "?,?,?" or
-// "$1,$2,$3") in your database's dialect is still your job, consistent
-// with a query's SQL text always being caller-authored.
+// Building the placeholder string (e.g. "?,?,?" or "$1,$2,$3") for those
+// args is still your job.
 func LookupKeys(batch etl.Batch, column int) ([]any, error) {
 	rec := batch.Record()
 	if column < 0 || column >= int(rec.NumCols()) {
@@ -51,13 +49,9 @@ func LookupKeys(batch etl.Batch, column int) ([]any, error) {
 }
 
 // valueExtractorFor returns a function that, given column a and row i,
-// returns two values: a dedupe key with an exact, type-specific identity
-// (safe as a map key — e.g. float64 bits rather than a formatted string, so
-// distinct values, including distinct NaN payloads, are never treated as
-// duplicates), and the arg value to hand back to the caller as a query
-// parameter (e.g. a time.Time for a Timestamp column, so it round-trips
-// through database/sql the same way a time.Time query arg from any other
-// source would, rather than as a raw epoch integer).
+// returns a dedupe key with exact type-specific identity (e.g. float64 bits,
+// not a formatted string, so distinct NaN payloads aren't treated as
+// duplicates) and the arg value to return to the caller.
 func valueExtractorFor(dt arrow.DataType) (func(arrow.Array, int) (key, arg any), error) {
 	switch dt.ID() {
 	case arrow.INT64:

@@ -302,11 +302,8 @@ func TestSourcePermissiveConversionFromBytes(t *testing.T) {
 }
 
 // TestSourceWithAllocatorNilIgnored is a regression test: WithAllocator used
-// to overwrite Source's mem field unconditionally, so passing nil replaced
-// the memory.DefaultAllocator set by New with a nil allocator, which panics
-// (or otherwise misbehaves) the first time an Arrow builder is constructed
-// from it. A nil mem must be silently ignored, keeping the default, the same
-// convention WithBatchSize already follows for an invalid n.
+// to store nil unconditionally, replacing the default allocator and
+// panicking on first builder use. A nil mem must be silently ignored.
 func TestSourceWithAllocatorNilIgnored(t *testing.T) {
 	schema := int64Schema("id")
 	dsn := registerFixture(t, &fixture{
@@ -330,12 +327,9 @@ func TestSourceWithAllocatorNilIgnored(t *testing.T) {
 	}
 }
 
-// TestSourceWithAllocatorTypedNilIgnored is a regression test: unlike
-// TestSourceWithAllocatorNilIgnored's untyped nil literal, a typed-nil
-// concrete allocator such as (*memory.CheckedAllocator)(nil), wrapped in
-// the memory.Allocator interface, is != nil. WithAllocator must still catch
-// it and keep the default rather than storing it and panicking the first
-// time an Arrow builder is constructed from it.
+// TestSourceWithAllocatorTypedNilIgnored is a regression test: a typed-nil
+// allocator like (*memory.CheckedAllocator)(nil) is != nil once wrapped in
+// the interface, so WithAllocator must still detect and ignore it.
 func TestSourceWithAllocatorTypedNilIgnored(t *testing.T) {
 	schema := int64Schema("id")
 	dsn := registerFixture(t, &fixture{
@@ -369,12 +363,9 @@ func boolSchema() *arrow.Schema {
 	}, nil)
 }
 
-// TestSourceBoolFromBinaryByte is a regression test: some drivers (notably
-// certain MySQL/MSSQL BIT(1) handling) scan a BIT column as a raw
-// single-byte binary value (0x00/0x01) rather than ASCII text ("0"/"1"),
-// which strconv.ParseBool doesn't accept, so boolConverter.append used to
-// error and abort the whole source on real BIT-column data from such
-// drivers.
+// TestSourceBoolFromBinaryByte is a regression test: some drivers (e.g.
+// MySQL/MSSQL BIT(1)) scan booleans as raw bytes (0x00/0x01), not ASCII
+// text, which used to make boolConverter.append error out.
 func TestSourceBoolFromBinaryByte(t *testing.T) {
 	schema := boolSchema()
 	dsn := registerFixture(t, &fixture{
@@ -461,9 +452,8 @@ func TestSourceNilDBAndSchema(t *testing.T) {
 }
 
 // TestSourceWithArgsCopiesSlice is a regression test: WithArgs used to keep
-// a reference to the caller's backing slice, so mutating it after
-// construction (or reusing it concurrently) could change the args the next
-// query runs with.
+// a reference to the caller's slice, so mutating it after construction
+// could change the args the next query runs with.
 func TestSourceWithArgsCopiesSlice(t *testing.T) {
 	schema := int64Schema("id")
 	dsn := registerFixture(t, &fixture{
@@ -698,17 +688,10 @@ func TestSourceTimestampFromTextDriverValue(t *testing.T) {
 	}
 }
 
-// TestSourceTimestampFromTextDriverValueWithTimeZone is a regression test
-// for a bug in the fix TestSourceTimestampFromTextDriverValue covers: when
-// the schema's TimestampType declares a non-UTC TimeZone and a driver hands
-// back a naive (no offset) text timestamp, timestampConverter.append used
-// to parse it as arrow.TimestampFromString does — assuming UTC — which
-// silently shifted the resulting instant by the zone's offset instead of
-// treating the text as a wall-clock reading in the declared zone. The
-// correct instant is what you'd get by parsing the same digits with
-// time.ParseInLocation in that zone, which is what a driver returning a
-// proper time.Time (the sibling branch, via arrow.TimestampFromTime) would
-// have produced for an equivalent value.
+// TestSourceTimestampFromTextDriverValueWithTimeZone guards a follow-on bug:
+// naive text under a non-UTC declared TimeZone used to be parsed as UTC
+// (via arrow.TimestampFromString), silently shifting the instant by the
+// zone's offset instead of reading it as wall-clock time in that zone.
 func TestSourceTimestampFromTextDriverValueWithTimeZone(t *testing.T) {
 	loc, err := time.LoadLocation("America/New_York")
 	if err != nil {
@@ -777,10 +760,8 @@ func TestSourceTimestampFromTextDriverValueWithTimeZone(t *testing.T) {
 		}
 	}
 
-	// Sanity check that the naive text case and the UTC-assuming parse
-	// actually disagree, so this test would have caught the bug: NY is
-	// behind UTC, so treating "12:30:00" as UTC instead of NY wall-clock
-	// time yields a different (earlier, by the zone's offset) instant.
+	// Sanity check that the naive and UTC-assumed parses actually disagree,
+	// so this test would have caught the bug being guarded against.
 	utcAssumed, err := arrow.TimestampFromString("2026-07-15 12:30:00", arrow.Microsecond)
 	if err != nil {
 		t.Fatal(err)
@@ -791,15 +772,9 @@ func TestSourceTimestampFromTextDriverValueWithTimeZone(t *testing.T) {
 }
 
 // TestSourceTimestampUnresolvableTimeZoneDoesNotFailSetup is a regression
-// test: converterFor used to resolve the schema field's declared TimeZone
-// via time.LoadLocation eagerly, so sqlsource.New failed immediately for any
-// schema declaring a TimeZone that doesn't resolve (e.g. because the binary
-// wasn't built with time/tzdata and isn't running where the system zoneinfo
-// database is available), even for callers whose driver only ever returns
-// time.Time — which never needs the resolved zone at all, since
-// arrow.TimestampFromTime works from the time.Time's own baked-in offset.
-// Resolution must be deferred until a text ([]byte/string) driver value
-// actually needs it.
+// test: converterFor used to resolve the declared TimeZone eagerly, so New
+// failed immediately for an unresolvable zone even when the driver only
+// ever returns time.Time, which never needs it resolved.
 func TestSourceTimestampUnresolvableTimeZoneDoesNotFailSetup(t *testing.T) {
 	const badZone = "Not/A_Real_Zone"
 	if _, err := time.LoadLocation(badZone); err == nil {
@@ -896,14 +871,10 @@ func TestSourceTimestampUnresolvableTimeZoneErrorsOnTextValue(t *testing.T) {
 }
 
 // TestSourceTimestampCaseInsensitiveUTCTimeZone is a regression test:
-// timestampTextLocation used to compare a schema's declared TimeZone against
-// the exact, case-sensitive string "UTC" before falling through to
-// time.LoadLocation, but Arrow's own convention (see arrow-go's
-// TimestampType.GetZone) treats "UTC" and "utc" as equivalent. Any other
-// casing was looked up as if it were a real IANA zone name via
-// time.LoadLocation, which fails for a spelling like "utc" that isn't a real
-// zone file name, including (unlike a real IANA zone) on builds without
-// tzdata linked in.
+// timestampTextLocation used to compare TimeZone against "UTC"
+// case-sensitively, but Arrow treats "UTC"/"utc" as equivalent; any other
+// casing fell through to time.LoadLocation and failed, even without tzdata
+// linked.
 func TestSourceTimestampCaseInsensitiveUTCTimeZone(t *testing.T) {
 	schema := arrow.NewSchema([]arrow.Field{
 		{Name: "id", Type: arrow.PrimitiveTypes.Int64},

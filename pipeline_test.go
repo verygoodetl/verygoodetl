@@ -142,14 +142,9 @@ func (b countingBatch) Release() {
 }
 
 // TestConsumeInputsWaitsForReadersAfterConsumeError is a regression test:
-// consumeInputs used to return the instant consume failed, without waiting
-// for the reader goroutines it started for each input edge. Those readers
-// keep running detached in the background until they separately notice
-// ctx is done, so a caller could observe consumeInputs — and thus Run —
-// return while a reader was still draining and releasing whatever batches
-// were left queued on its edge. Here, a second batch is left queued behind
-// the one that fails; consumeInputs must not return until it's been
-// drained and released, not merely eventually.
+// consumeInputs used to return as soon as consume failed, without waiting
+// for its per-edge reader goroutines, which could keep draining and
+// releasing queued batches after the caller had already moved on.
 func TestConsumeInputsWaitsForReadersAfterConsumeError(t *testing.T) {
 	released := false
 	e := &edge{ch: make(chan envelope, 2)}
@@ -193,10 +188,9 @@ func (s failingSink) Consume(context.Context, Batch) error { return s.err }
 func (failingSink) Finish(context.Context) error           { return nil }
 
 // TestRunCancelsUnboundedSourceOnConsumeFailure is a regression test: a
-// failing Sink.Consume must cancel the pipeline-wide context, not just
-// consumeInputs' own derived context, or an unbounded upstream source never
-// learns to stop and Run hangs forever waiting for its reader goroutine to
-// drain an edge that never closes.
+// failing Consume must cancel the pipeline-wide context, not just
+// consumeInputs' own derived context, or an unbounded source never learns
+// to stop and Run hangs forever.
 func TestRunCancelsUnboundedSourceOnConsumeFailure(t *testing.T) {
 	wantErr := errors.New("boom")
 	p := New()
@@ -276,11 +270,9 @@ func TestRunNilContextReturnsErrorInsteadOfPanicking(t *testing.T) {
 type nilPtrContext struct{ context.Context }
 
 // TestRunTypedNilContextReturnsErrorInsteadOfPanicking is a regression test:
-// a typed-nil context.Context (e.g. `var c *myContext = nil` wrapped in the
-// interface) is != nil by interface comparison, so a plain `ctx == nil`
-// check lets it through and context.WithCancel(ctx) panics calling Done() on
-// the nil receiver. Run must catch this the same way isNilValue already
-// does for a typed-nil stage passed to From/Process/Merge/To.
+// a typed-nil context.Context is != nil by interface comparison, so a plain
+// `ctx == nil` check lets it through and context.WithCancel(ctx) panics on
+// the nil receiver (see isNilValue).
 func TestRunTypedNilContextReturnsErrorInsteadOfPanicking(t *testing.T) {
 	p := New()
 	p.From(batchesSource{batches: []Batch{intBatch(t, 1)}}).To(SinkFuncs{})
@@ -330,14 +322,9 @@ func TestUpstreamFailureCallsAbortOnDownstreamSink(t *testing.T) {
 	}
 }
 
-// nilPtrSource, nilPtrProcessor, and nilPtrSink are concrete pointer types
-// implementing Source, Processor, and Sink respectively, with methods that
-// dereference the receiver. A nil *T of any of these, once wrapped in its
-// interface, is not == nil (the interface carries the concrete type
-// descriptor and only a nil value pointer), so they exercise the typed-nil
-// detection in isNilStage: without it, From/Process/Merge/To would let a nil
-// *T through and its method would panic on a nil-pointer dereference the
-// first time the runtime actually invokes it.
+// nilPtrSource, nilPtrProcessor, and nilPtrSink dereference their receiver,
+// so a nil *T wrapped in the interface is != nil but panics on first use —
+// exercising isNilValue's typed-nil detection in From/Process/Merge/To.
 type nilPtrSource struct{ batches []Batch }
 
 func (s *nilPtrSource) Run(ctx context.Context, out Output) error {
@@ -416,12 +403,10 @@ func TestTypedNilStagesReturnErrorInsteadOfPanicking(t *testing.T) {
 }
 
 // nilSliceSource, nilSliceProcessor, and nilSliceSink are named slice types
-// implementing Source, Processor, and Sink respectively, with value-receiver
-// methods that never touch the receiver — the same shape as, say, a
-// http.HandlerFunc-style adapter or a named slice type used purely as a
-// marker. A nil value of any of these is a legal, safe stage: unlike
-// nilPtrSource/nilPtrProcessor/nilPtrSink above, invoking their methods on a
-// nil receiver never panics, so isNilStage must not reject them.
+// with value-receiver methods that never touch the receiver (mirroring
+// http.HandlerFunc), so a nil value is a legal stage — unlike
+// nilPtrSource/nilPtrProcessor/nilPtrSink above, isNilValue must not reject
+// them.
 type nilSliceSource []string
 
 func (nilSliceSource) Run(context.Context, Output) error { return nil }
@@ -484,11 +469,9 @@ func TestNilNamedSliceStagesAreAcceptedNotRejected(t *testing.T) {
 	})
 }
 
-// nilBatchSource sends a single typed-nil *ArrowBatch, mirroring the
-// nilPtrSource/nilPtrProcessor/nilPtrSink types above but for a Batch value
-// flowing through Output.Send rather than a stage passed to a builder
-// method: `var b *ArrowBatch = nil` wrapped in the Batch interface is not
-// == nil, so it exercises Send's typed-nil detection.
+// nilBatchSource sends a typed-nil *ArrowBatch through Output.Send, the
+// Batch-side analogue of the nilPtr* stages above — exercising Send's
+// typed-nil detection instead of a builder method's.
 type nilBatchSource struct{}
 
 func (nilBatchSource) Run(ctx context.Context, out Output) error {
@@ -510,11 +493,9 @@ func TestSendTypedNilBatchReturnsErrorInsteadOfPanicking(t *testing.T) {
 	}
 }
 
-// nilRecordBatchSource sends a *ArrowBatch that is itself non-nil but wraps
-// a nil arrow.Record, e.g. via NewBatch(nil). Unlike nilBatchSource's typed-
-// nil *ArrowBatch pointer, `ab == nil` is false here, so this exercises
-// nilBatch's check of the wrapped record rather than the ArrowBatch pointer
-// itself.
+// nilRecordBatchSource wraps a nil arrow.Record in a non-nil *ArrowBatch
+// (e.g. via NewBatch(nil)), exercising nilBatch's check of the wrapped
+// record rather than the ArrowBatch pointer itself.
 type nilRecordBatchSource struct{}
 
 func (nilRecordBatchSource) Run(ctx context.Context, out Output) error {
@@ -560,11 +541,10 @@ func (s typedNilCtxSource) Run(ctx context.Context, out Output) error {
 }
 
 // TestSendTypedNilContextFallsBackToNodeContextInsteadOfPanicking is a
-// regression test: Send's `ctx == nil` fallback check missed a typed-nil
-// context.Context (e.g. `var c *myContext = nil` wrapped in the interface),
-// which compares != nil, so the typed-nil ctx was kept instead of falling
-// back to the node's own context, and ctx.Done() below panicked on the nil
-// receiver. Send now uses isNilValue, matching Run's typed-nil validation.
+// regression test: Send's `ctx == nil` check missed a typed-nil
+// context.Context, so it was kept instead of falling back to the node's own
+// context, and ctx.Done() panicked on the nil receiver. Send now uses
+// isNilValue, matching Run's typed-nil validation.
 func TestSendTypedNilContextFallsBackToNodeContextInsteadOfPanicking(t *testing.T) {
 	p := New()
 	p.From(typedNilCtxSource{t: t}).To(SinkFuncs{})
@@ -588,13 +568,10 @@ func TestSendTypedNilCustomBatchReturnsErrorInsteadOfPanicking(t *testing.T) {
 	}
 }
 
-// nilMapBatch and nilSliceBatch are named map/slice types implementing
-// Batch, the same adapter shape that nilSliceSource/nilSliceProcessor/
-// nilSliceSink above use to prove isNilValue must accept a nil stage. Batch
-// is different: Schema, NumRows, and Record must produce real data, which a
-// nil map or slice receiver cannot supply without touching the receiver, so
-// nilBatch (unlike isNilValue) must reject a nil value of either type
-// instead of letting it reach Retain/Release/Record downstream.
+// nilMapBatch and nilSliceBatch use the same nil-value-receiver-adapter
+// shape as nilSliceSource above, but nilBatch must reject them: unlike a
+// stage, Batch's methods must return real data, which a nil map/slice
+// receiver can't supply.
 type nilMapBatch map[string]int
 
 func (nilMapBatch) Schema() *arrow.Schema { return nil }
@@ -655,12 +632,10 @@ func TestSendNilMapOrSliceBatchReturnsErrorInsteadOfPanicking(t *testing.T) {
 	})
 }
 
-// TestPipelineFrozenAfterFailedValidationRun verifies that a Run which fails
-// because a builder call was given a nil stage still marks the pipeline as
-// started, consistent with the single-use contract: a later builder call
-// panics instead of silently mutating an already-"run" pipeline, and a
-// second Run reports "already run" rather than re-returning the original
-// validation error.
+// TestPipelineFrozenAfterFailedValidationRun verifies a Run that fails from
+// a nil-stage validation error still marks the pipeline started: a later
+// builder call panics, and a second Run reports "already run" rather than
+// re-returning the validation error.
 func TestPipelineFrozenAfterFailedValidationRun(t *testing.T) {
 	p := New()
 	p.From(nil).To(SinkFuncs{})

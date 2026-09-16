@@ -57,16 +57,11 @@ func main() {
 	pipeline := etl.New()
 	orders := pipeline.From(source)
 
-	// The raw, unmodified rows go to a durable archive.
-	// WithWriterOptions{IfNotExist: true} makes this an archive rather than
-	// an ordinary overwrite-on-every-run file sink: writing orders.parquet
-	// a second time fails.
+	// WithWriterOptions{IfNotExist: true} makes this an archive, not an
+	// overwrite-on-every-run file sink: writing orders.parquet twice fails.
 	orders.CopyTo(filesink.New(bucket, "orders.parquet", filesink.Parquet(),
 		filesink.WithWriterOptions(&blob.WriterOptions{IfNotExist: true})))
 
-	// ...while the same rows also flow to a reporting sink. If the
-	// reporting sink's logic ever needs to change, it can be rebuilt from
-	// orders.parquet without re-querying the source database.
 	var reported []string
 	orders.To(etl.SinkFuncs{
 		ConsumeFunc: func(_ context.Context, b etl.Batch) error {

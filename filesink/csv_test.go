@@ -122,8 +122,7 @@ func TestCSVRoundTrip(t *testing.T) {
 }
 
 // TestCSVTimestampUsesDeclaredTimeZone verifies a TIMESTAMP field's
-// schema-declared TimeZone is honored when formatting: the rendered
-// wall-clock time and offset must reflect the declared zone, not UTC.
+// declared TimeZone affects rendering, not just UTC.
 func TestCSVTimestampUsesDeclaredTimeZone(t *testing.T) {
 	loc, err := time.LoadLocation("America/New_York")
 	if err != nil {
@@ -176,14 +175,9 @@ func TestCSVTimestampUsesDeclaredTimeZone(t *testing.T) {
 }
 
 // TestCSVNewWriterTypedNilFieldTypeReturnsError is a regression test:
-// arrow.NewSchema only rejects a field whose Type is an untyped nil
-// interface, not a typed-nil pointer like (*arrow.TimestampType)(nil) — the
-// interface carries a concrete type descriptor alongside the nil value, so
-// it compares != nil and sails through. csvFormatterFor then called dt.ID()
-// (safe, since arrow-go's ID methods ignore the receiver) followed by a type
-// assertion and field access, e.g. dt.(*arrow.TimestampType).TimeZone,
-// which panicked on the nil receiver instead of NewWriter returning an
-// ordinary error.
+// arrow.NewSchema only rejects an untyped nil Type, not a typed-nil pointer
+// like (*arrow.TimestampType)(nil), which used to panic in
+// csvFormatterFor's type assertion instead of returning an error.
 func TestCSVNewWriterTypedNilFieldTypeReturnsError(t *testing.T) {
 	schema := arrow.NewSchema([]arrow.Field{
 		{Name: "created", Type: (*arrow.TimestampType)(nil)},
@@ -196,10 +190,8 @@ func TestCSVNewWriterTypedNilFieldTypeReturnsError(t *testing.T) {
 }
 
 // TestSinkWithSchemaTypedNilFieldTypeReturnsError mirrors
-// TestCSVNewWriterTypedNilFieldTypeReturnsError for the other path that
-// reaches Format.NewWriter with a caller-supplied schema: an empty Sink
-// configured with WithSchema opens its writer from Finish rather than
-// Consume, since no batch ever arrives to supply a schema of its own.
+// TestCSVNewWriterTypedNilFieldTypeReturnsError for the WithSchema path,
+// where NewWriter is reached from Finish instead of Consume.
 func TestSinkWithSchemaTypedNilFieldTypeReturnsError(t *testing.T) {
 	bucket := memblob.OpenBucket(nil)
 	defer bucket.Close()
@@ -270,13 +262,9 @@ func TestCSVEscapingIsRFC4180(t *testing.T) {
 	}
 }
 
-// TestCSVEmbeddedBareCRInCRLFMode documents a real, deliberately preserved
-// limitation of the standard library's encoding/csv.Writer that csvWriter
-// (see csv_writer.go) faithfully carries over: a bare '\r' (one not
-// immediately followed by '\n') is silently dropped when UseCRLF is set —
-// see the `case '\r': if !w.UseCRLF { ... }` branch. This test exists to
-// catch an unintentional behavior change in this fork, not to assert a
-// "fixed" outcome.
+// TestCSVEmbeddedBareCRInCRLFMode documents a deliberately preserved
+// stdlib quirk: a bare '\r' not followed by '\n' is silently dropped in
+// CRLF mode. Guards against an unintentional behavior change in this fork.
 func TestCSVEmbeddedBareCRInCRLFMode(t *testing.T) {
 	schema := arrow.NewSchema([]arrow.Field{{Name: "value", Type: arrow.BinaryTypes.String}}, nil)
 
@@ -341,25 +329,19 @@ func TestCSVWithEscapeCharacter(t *testing.T) {
 	if strings.Contains(raw, `""`) {
 		t.Fatalf("raw output still uses RFC 4180 doubled-quote escaping: %q", raw)
 	}
-	// A non-default EscapeCharacter is not RFC 4180-compliant by design, so
-	// it will not round-trip through a standard csv.Reader — that's the
-	// documented tradeoff of using this option, not asserted here.
+	// Not RFC 4180-compliant by design — won't round-trip through a
+	// standard reader, which isn't asserted here.
 }
 
-// TestCSVWithEscapeCharacterEscapesLiteralEscapeByte covers a case the
-// escape-character path previously got wrong: a field containing a literal
-// occurrence of the configured EscapeCharacter, immediately followed by a
-// quote character. Without also escaping the literal escape byte itself, an
-// escape-based reader can't tell that byte apart from an escape-introducer,
-// and misparses the quote that follows (and potentially the rest of the
-// record, since the reader believes it's still inside the quoted field).
+// TestCSVWithEscapeCharacterEscapesLiteralEscapeByte covers a literal
+// occurrence of EscapeCharacter immediately followed by a quote: without
+// escaping the literal byte too, a reader can't tell it apart from an
+// escape-introducer and misparses the rest of the record.
 func TestCSVWithEscapeCharacterEscapesLiteralEscapeByte(t *testing.T) {
 	schema := arrow.NewSchema([]arrow.Field{{Name: "value", Type: arrow.BinaryTypes.String}}, nil)
 
 	b := array.NewStringBuilder(memory.DefaultAllocator)
 	defer b.Release()
-	// Contains a literal backslash (the escape character) immediately
-	// followed by a quote — the classic backslash-escaping ambiguity.
 	tricky := `x\"y`
 	b.Append(tricky)
 	arr := b.NewArray()
@@ -385,20 +367,16 @@ func TestCSVWithEscapeCharacterEscapesLiteralEscapeByte(t *testing.T) {
 		t.Fatalf("raw output=%q, want %q", raw, want)
 	}
 
-	// Decode by hand using the same backslash-escaping convention the
-	// writer was configured with, to confirm the output round-trips
-	// unambiguously (a standard csv.Reader doesn't understand backslash
-	// escaping, so it can't be used here).
+	// Decode by hand — a standard csv.Reader doesn't understand backslash
+	// escaping.
 	got := decodeBackslashEscapedField(t, raw)
 	if got != tricky {
 		t.Fatalf("decoded value=%q, want %q", got, tricky)
 	}
 }
 
-// decodeBackslashEscapedField extracts and unescapes the single quoted data
-// field from a two-line (header + one row) CSV blob written with
-// EscapeCharacter set to a backslash, treating \\ and \" as the only
-// recognized escape sequences.
+// decodeBackslashEscapedField extracts and unescapes the single quoted
+// field from a two-line CSV blob written with a backslash EscapeCharacter.
 func decodeBackslashEscapedField(t *testing.T, raw string) string {
 	t.Helper()
 	lines := strings.Split(strings.TrimSuffix(raw, "\n"), "\n")
@@ -448,8 +426,8 @@ func TestCSVWithAlwaysEncapsulate(t *testing.T) {
 		t.Fatalf("raw output=%q, want %q (every field quoted, even ones that don't need it)", buf.String(), want)
 	}
 
-	// Unlike a non-default EscapeCharacter, always-quoting is still
-	// RFC 4180-legal and round-trips fine through a standard reader.
+	// Unlike a non-default EscapeCharacter, this is still RFC 4180-legal
+	// and round-trips through a standard reader.
 	r := csv.NewReader(bytes.NewReader(buf.Bytes()))
 	rows, err := r.ReadAll()
 	if err != nil {
@@ -900,12 +878,9 @@ func TestCSVWithEscapeFormulasPrefixesTriggerChars(t *testing.T) {
 	}
 }
 
-// TestCSVWithEscapeFormulasEscapesNullString verifies that a trigger-valued
-// null string (WithNullString) is passed through the same formula-escaping
-// chokepoint as every other cell when WithEscapeFormulas is set. Null cells
-// are written directly as w.nullString rather than through a formatter, so
-// they need their own escaping step (see NewWriter's precomputed nullString
-// in csv.go) instead of relying on the per-column formatter wrapping.
+// TestCSVWithEscapeFormulasEscapesNullString verifies a trigger-valued null
+// string is escaped too: null cells are written directly as w.nullString,
+// bypassing the per-column formatter that normally applies the escape.
 func TestCSVWithEscapeFormulasEscapesNullString(t *testing.T) {
 	schema := arrow.NewSchema([]arrow.Field{{Name: "value", Type: arrow.BinaryTypes.String, Nullable: true}}, nil)
 
@@ -943,12 +918,11 @@ func TestCSVWithEscapeFormulasEscapesNullString(t *testing.T) {
 }
 
 func TestCSVWithEscapeFormulasAppliesToBinaryField(t *testing.T) {
-	// base64 can legitimately produce a leading '+' (it's part of the
-	// base64 alphabet), so a binary field rendered as base64 text is just
-	// as exposed to formula injection as a string field.
+	// base64's alphabet includes '+', so a binary field rendered as
+	// base64 is exposed to formula injection just like a string field.
 	schema := arrow.NewSchema([]arrow.Field{{Name: "notes", Type: arrow.BinaryTypes.Binary}}, nil)
 
-	// base64("\xfb...") starts with '+'; find bytes whose encoding does.
+	// Find a byte sequence whose base64 encoding starts with '+'.
 	var raw []byte
 	var encoded string
 	for b := byte(0); ; b++ {
@@ -1093,13 +1067,9 @@ func TestSinkHappyPathCSV(t *testing.T) {
 	}
 }
 
-// TestSinkZeroBatchesWithSchemaCSVWritesHeader verifies that a schema-only
-// Sink (WithSchema, zero batches consumed) still emits the header row on
-// Finish. Finish calls RecordWriter.Close directly without ever calling
-// Write when no batch arrives (see Finish at sink.go:80), so the header —
-// otherwise written lazily on the first Write call — must also be emitted
-// from Close for this case; see csvRecordWriter.Close / maybeWriteHeader in
-// csv.go.
+// TestSinkZeroBatchesWithSchemaCSVWritesHeader verifies a schema-only Sink
+// (WithSchema, zero batches) still emits the header from Close, which
+// Finish calls directly without Write when no batch arrives.
 func TestSinkZeroBatchesWithSchemaCSVWritesHeader(t *testing.T) {
 	bucket := memblob.OpenBucket(nil)
 	defer bucket.Close()

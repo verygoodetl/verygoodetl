@@ -76,8 +76,7 @@ func (parquetFormat) ContentType() string { return "application/vnd.apache.parqu
 func (f parquetFormat) NewWriter(schema *arrow.Schema, w io.Writer) (RecordWriter, error) {
 	props := parquet.NewWriterProperties(parquet.WithCompression(f.compression))
 	arrProps := pqarrow.NewArrowWriterProperties(pqarrow.WithStoreSchema())
-	// pqarrow's FileWriter.Close closes w if it implements io.Closer (via
-	// parquet/file.Writer's sink). writeOnly hides Close so this method
-	// honors the Format.NewWriter contract that w is not closed.
+	// pqarrow's FileWriter closes w if it implements io.Closer; writeOnly
+	// hides Close to honor NewWriter's contract that w stays open.
 	return pqarrow.NewFileWriter(schema, writeOnly{w}, props, arrProps)
 }

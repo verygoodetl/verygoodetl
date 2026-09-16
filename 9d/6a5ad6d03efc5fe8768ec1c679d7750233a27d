@@ -1,0 +1,28 @@
+sqlsink/sink.go
+  s_ca952b2548a279::t_b080eaaa5050b5 455-467,484-527,529-537,539-550
+  s_ca952b2548a279::t_a296f84ab0215c 610-626
+sqlsink/sink_test.go
+  s_ca952b2548a279::t_42fe03ad620024 1840-1841
+  s_ca952b2548a279::t_e6d8531ee75fca 2129-2133
+  s_ca952b2548a279::t_ebaff2b9eeb9e1 2112-2118,2123-2124,2126-2127
+  s_ca952b2548a279::t_f0d5b0dc6b94ca 2072-2075
+  s_ca952b2548a279::t_ca15ccd26193b1 2053-2061,2066-2067,2069-2070
+  s_ca952b2548a279::t_aabf2b5976339e 1905-2052,2062-2065,2068,2071,2076-2111,2119-2122,2125,2128,2134-2136
+  s_ca952b2548a279::t_cb2fa45444e1ba 1765-1777,1803-1838,1842
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9d6a5ad6d03efc5fe8768ec1c679d7750233a27d",
+  "prompts": {},
+  "sessions": {
+    "s_ca952b2548a279": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "764258cf-8c8e-4985-8a77-c548fde34c49",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    }
+  }
+}

@@ -1,0 +1,112 @@
+sqlsink/sink_test.go
+  s_ca952b2548a279::t_caffa9ff0c8e33 780-804
+  s_ca952b2548a279::t_2cf6d9a0dffeb5 1264-1268,1282,1284-1315,1317-1332
+  s_ca952b2548a279::t_3da5b7adffe9b6 541-582
+  s_be150e0123928b::t_cc3fa0fbe01b6f 1193-1198
+  s_ca952b2548a279::t_dbe6b8513d5b67 1735-1860
+  s_ca952b2548a279::t_47dc45991ec175 607-645
+  s_ca952b2548a279::t_13808195aa76da 370-375,377,380-385
+  s_ca952b2548a279::t_35129d17c3a92a 6
+  s_ca952b2548a279::t_bbf764dedaf332 1269-1281,1283,1316
+  s_ca952b2548a279::t_3fa2700e6f93ba 1351-1352,1357
+  s_ca952b2548a279::t_525a27a9c2b0c1 1397-1431,1488-1571
+  s_ca952b2548a279::t_437c206b085498 1474-1487
+  s_ca952b2548a279::t_c4d776286967c6 646-653,679-680
+  s_ca952b2548a279::t_7935e9d481a3ad 1181-1192
+  s_ca952b2548a279::t_82220cce7b70c7 8
+  s_ca952b2548a279::t_cf790577ad1b80 437-486
+  s_ca952b2548a279::t_a9699b697c5e53 1450
+  s_ca952b2548a279::t_0527416633cb56 1432-1447
+  s_ca952b2548a279::t_5c9b85fe19ee39 1706-1708
+  s_ca952b2548a279::t_9740a90b87fa66 1861-1925,1929-1944
+  s_ca952b2548a279::t_935724c992f729 694-704
+  s_ca952b2548a279::t_162a92b55b724e 1926-1928
+  s_ca952b2548a279::t_e05f61484c88f6 9,17
+  s_ca952b2548a279::t_d16825f95a6b1f 1448-1449,1662-1705,1709-1734
+  s_ca952b2548a279::t_2b2d9b30841117 1451-1473
+ARCHITECTURE.md
+  s_ca952b2548a279::t_360ec77209ebdb 84-85
+sqlsink/doc.go
+  s_ca952b2548a279::t_dee452540a80c6 22-29
+sqlsink/sink_internal_test.go
+  s_ca952b2548a279::t_ca2ff6e9421476 13
+  s_ca952b2548a279::t_105f63298ab4da 100-200
+  s_ca952b2548a279::t_ab2e3f5acb2152 267-351
+README.md
+  s_ca952b2548a279::t_a00285cf7abb8d 207
+  s_ca952b2548a279::t_3cc043f6e9bb01 205
+sqlsink/sink.go
+  s_ca952b2548a279::t_04dcfb6661bef0 618-619
+  s_ca952b2548a279::t_192fdd1a705a9b 212-215,229-234,236
+  s_ca952b2548a279::t_cb1aaf90fd6f66 683-688
+  s_ca952b2548a279::t_aae1bc35743203 205-211
+  s_ca952b2548a279::t_46a685e2391440 184-203,228,304
+  s_ca952b2548a279::t_b73b24e7ccd81a 276
+  s_ca952b2548a279::t_df50024b6c4854 340
+  s_ca952b2548a279::t_b785a8e9e99169 204
+  s_ca952b2548a279::t_7d187b224e8f95 289-291
+  s_ca952b2548a279::t_b4dbc68efea662 305
+  s_ca952b2548a279::t_35a9be07c4e961 531-566
+  s_ca952b2548a279::t_02d7bbee286457 70,72
+  s_ca952b2548a279::t_7d162c2146b92b 598-600,609
+  s_ca952b2548a279::t_01462cc0c1038a 306-307
+  s_ca952b2548a279::t_b1cad7fbfb6f4c 365-369
+  s_ca952b2548a279::t_383caa3593fd1e 121-135
+  s_be150e0123928b::t_807dcb9ba8fa5f 612-615
+  s_ca952b2548a279::t_b3bb05f108e9ff 398-404
+  s_ca952b2548a279::t_5dbfc5b7f00572 596-597
+  s_ca952b2548a279::t_917251106e5aba 87-88
+  s_ca952b2548a279::t_50166b25dbf2ee 496,498-503,516
+  s_ca952b2548a279::t_def08794652160 650-653
+  s_ca952b2548a279::t_90ce2103e57567 91-96
+  s_be150e0123928b::t_fcfd73e07d801f 425
+  s_ca952b2548a279::t_21f4f33ba4c2b1 143-145,148-152,154
+  s_ca952b2548a279::t_2ac5e60525c856 426-428
+  s_ca952b2548a279::t_51a512951c15d7 464-466
+  s_ca952b2548a279::t_710020045b8522 73-80
+  s_ca952b2548a279::t_5924e038133ad2 395-397,419,421-424
+  s_ca952b2548a279::t_a4dbaa863aed55 216-227,237-266
+  s_ca952b2548a279::t_b0050c7460edf2 158-183
+  s_ca952b2548a279::t_88c3fafe463e76 420
+  s_ca952b2548a279::t_4ab2b1ef32052f 303
+  s_415ab668db447e::t_dbc9ee862cce4a 153,155-157,235,308
+  s_ca952b2548a279::t_e753d275e2a866 374-393
+  s_be150e0123928b::t_95f0d617f4fef7 610-611
+  s_ca952b2548a279::t_3c393e18336b91 567-573,588-590
+  s_ca952b2548a279::t_e8d9ad803a71de 357-359
+  s_ca952b2548a279::t_c032aa4c285f4b 602,616-617,620-625
+examples/sql-to-sql/main.go
+  s_ca952b2548a279::t_32f9ff7ca51125 55-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "12be2f79206c1dd2789885e7133f7a27eb99b266",
+  "prompts": {},
+  "sessions": {
+    "s_415ab668db447e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3c875eb9-2e42-4044-8f73-7205f29c00d7",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    },
+    "s_be150e0123928b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "72c0c04d-2cc7-4b55-9ed9-ad352eb634fd",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    },
+    "s_ca952b2548a279": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "764258cf-8c8e-4985-8a77-c548fde34c49",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": null
+    }
+  }
+}

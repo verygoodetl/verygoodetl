@@ -138,28 +138,15 @@ func (s Stream) To(sink Sink) {
 	p.connect(s.node, n)
 }
 
-// isNilValue reports whether v is either an untyped nil interface (v == nil)
-// or a typed nil pointer wrapped in a non-nil interface, e.g. a caller
-// passing a `var s *mySource = nil` to From, or a `var b *ArrowBatch = nil`
-// to Send. In Go, an interface value is == nil only when both its type and
-// value are nil, so a plain `v == nil` check misses the typed-nil case: the
-// interface carries a concrete type descriptor and a nil value pointer, so
-// it compares != nil even though calling any method on it dereferences a
-// nil receiver.
+// isNilValue reports whether v is nil, or a typed nil pointer wrapped in a
+// non-nil interface (e.g. `var s *mySource = nil` passed to From) — a case
+// `v == nil` misses because the interface carries a non-nil type descriptor.
 //
-// The check is deliberately narrow: only Kind() == reflect.Ptr is treated as
-// possibly nil-and-invalid. A nil map, slice, chan, or func can be a
-// perfectly valid, safe value — for example a named slice type with a
-// value-receiver method that never touches the receiver (mirroring
-// http.HandlerFunc-style adapters), which is legal and idiomatic Go. Only a
-// nil pointer is guaranteed to blow up the moment a method with a pointer
-// receiver dereferences one of its fields, which is the concrete failure
-// mode this validation exists to catch. (Kind() can never be
-// reflect.Interface here: v's static type is the empty interface, so
-// reflect.ValueOf(v) always unwraps to v's concrete dynamic type or is
-// invalid; it is never itself interface-kinded.) Kind is checked before
-// IsNil because IsNil panics on kinds that don't support it, e.g. a struct
-// value implementing the interface.
+// Only reflect.Ptr is treated as possibly nil-and-invalid: a nil map, slice,
+// chan, or func can be a legitimate value-receiver adapter (mirroring
+// http.HandlerFunc) that never touches its receiver. Kind is checked before
+// IsNil because IsNil panics on kinds that don't support it (e.g. a struct
+// implementing the interface).
 func isNilValue(v any) bool {
 	if v == nil {
 		return true
@@ -168,36 +155,21 @@ func isNilValue(v any) bool {
 	return rv.Kind() == reflect.Ptr && rv.IsNil()
 }
 
-// nilBatch is isNilValue specialized for Send, which runs on every batch at
-// every stage rather than once per stage registration. *ArrowBatch is the
-// only Batch implementation this package ships, so a type assertion to it
-// serves the overwhelming majority of calls with only the cheap ab == nil
-// check plus one isNilValue call on the wrapped record, reserving the
-// heavier reflect.ValueOf(b) fallback below for the rare custom Batch
-// implementation.
+// nilBatch is isNilValue specialized for Send, which runs on every batch
+// rather than once per stage registration: the *ArrowBatch fast path avoids
+// reflect.ValueOf for the common case, falling back to reflection only for
+// a custom Batch implementation.
 //
 // Unlike isNilValue, nilBatch rejects every nil-capable kind (map, slice,
-// func, chan, and pointer), not just nil pointers. isNilValue's pointer-only
-// carve-out exists for Source/Processor/Sink, whose single-method shape
-// makes a named map/slice/func/chan type with a value-receiver method that
-// ignores the receiver a plausible, safe adapter (mirroring
-// http.HandlerFunc). Batch has no such use case: Schema, NumRows, and
-// Record must return real, usable data, which a nil map, slice, func, or
-// chan receiver has no way to carry without the method touching the
-// receiver — at which point a nil func or chan panics unconditionally on
-// invocation, and a nil map or slice is indistinguishable from a
-// legitimately empty one, so treating a nil value of any of these kinds as
-// a well-formed Batch offers no real capability. Rejecting them here costs
-// nothing valid while catching the same class of bug isNilValue's pointer
-// check exists to catch.
+// func, chan, pointer), not just pointers — isNilValue's pointer-only
+// carve-out assumes a value-receiver adapter that ignores its receiver,
+// which doesn't apply here: Schema, NumRows, and Record must return real
+// data, so a nil Batch of any kind is never usable.
 func nilBatch(b Batch) bool {
 	if ab, ok := b.(*ArrowBatch); ok {
-		// ab.record is only read once ab itself is known non-nil: arrow.Record
-		// is an interface, so a caller doing NewBatch((*array.RecordBatch)(nil))
-		// (or any other typed-nil concrete record) produces a non-nil ab whose
-		// record field is != nil by pointer-equality but panics the moment
-		// Retain/Release/Schema/NumRows touches it. isNilValue already handles
-		// exactly this shape for Source/Processor/Sink.
+		// arrow.Record is an interface: NewBatch(typedNilRecord) can produce a
+		// non-nil ab whose record is itself a typed nil — the same trap
+		// isNilValue guards against for Source/Processor/Sink.
 		return ab == nil || isNilValue(ab.record)
 	}
 	if b == nil {
@@ -212,14 +184,11 @@ func nilBatch(b Batch) bool {
 	}
 }
 
-// setErrLocked records the first builder-time validation error for p, such as
-// a nil stage passed to From, Process, Merge, or To. Callers must hold p.mu.
-// Only the first error is kept: a nil stage recorded early in the chain is
-// almost always the root cause, while later calls may themselves be built on
-// top of the already-invalid Stream and would just add noise. The error is
-// surfaced by Run instead of being returned directly from the builder methods
-// so that graph construction can keep using its fluent, chained style without
-// every call needing to check for an error before proceeding.
+// setErrLocked records the first builder-time validation error for p (e.g. a
+// nil stage passed to From/Process/Merge/To); later errors are usually just
+// downstream noise from the same root cause. Surfaced via Run rather than
+// returned directly so the fluent builder chain never needs to check for an
+// error mid-chain. Callers must hold p.mu.
 func (p *Pipeline) setErrLocked(err error) {
 	if p.err == nil {
 		p.err = err
@@ -227,11 +196,9 @@ func (p *Pipeline) setErrLocked(err error) {
 }
 
 // panicIfStartedLocked panics if Run has already been called on p. Callers
-// must hold p.mu. Graph edges are plain channels created once by connect and
-// closed exactly once by Run (see closeEdges); allowing graph mutation after
-// Run has started would race with the running goroutines over those same
-// node and edge structures, and a node added after the initial snapshot in
-// Run would never be scheduled at all.
+// must hold p.mu. Graph edges are closed exactly once by Run (see
+// closeEdges); mutating the graph after that would race the running
+// goroutines over the same node/edge structures.
 func (p *Pipeline) panicIfStartedLocked() {
 	if p.started {
 		panic("etl: cannot modify a pipeline's graph after Run has been called")
@@ -253,32 +220,24 @@ func (p *Pipeline) connect(from, to *node) {
 }
 
 // Run executes the graph until every stage completes. A nil ctx is rejected
-// immediately with an error: context.WithCancel(ctx) would otherwise panic
-// before any stage goroutine starts, and unlike the nil-stage validation
-// below this check happens before the pipeline is marked started, since a
-// nil ctx is a caller mistake independent of anything already recorded on p.
-// If a builder call such as From, Process, Merge, or To was given a nil stage, Run returns that
-// error immediately without starting any stage goroutine. The pipeline is
-// still marked as run in this case, so the graph is frozen just as it would
-// be after a successful Run: further builder calls panic and a second call
-// to Run returns the "already run" error rather than re-surfacing the
-// validation error. Run always waits for every stage to finish unwinding,
-// even after a failure or a canceled ctx,
-// since stages are cooperative: only a stage's own returned error is ever
-// reported, not the mere fact that ctx was canceled. In practice this
-// distinction only matters when a stage neither checks ctx itself nor has
-// any Output.Send call left to notice it (see Output.Send in etl.go) — an
-// otherwise well-behaved stage that respects ctx reports its own error when
-// canceled, and that error is what Run returns. If every stage completes
-// without an error, Run returns nil even if ctx was canceled concurrently:
-// the work finished before the cancellation could have any effect, so it
-// wasn't actually canceled. The first stage error cancels the pipeline for
-// every other stage, and so does an external cancellation of ctx.
+// before the pipeline is marked started, since context.WithCancel(ctx) would
+// otherwise panic and a caller mistake shouldn't freeze the graph.
 //
-// A Pipeline may be run at most once: Run closes every graph edge's channel
-// as its stages finish, so a second call would send on or close already-
-// closed channels. Calling Run again returns an error instead of reusing
-// those closed edges.
+// If a builder call (From/Process/Merge/To) was given a nil stage, Run
+// returns that error without starting any stage, but still marks the
+// pipeline started so the single-use contract holds either way: further
+// builder calls panic, and a second Run reports "already run".
+//
+// Run always waits for every stage to unwind, even after a failure or a
+// canceled ctx: stages are cooperative, so only a stage's own returned error
+// is reported, not the mere fact that ctx was canceled. If every stage
+// returns nil, Run returns nil even under a concurrent cancellation — the
+// work finished before it could take effect. The first stage error, or an
+// external cancellation, stops every other stage.
+//
+// A Pipeline may be run at most once: Run closes every edge's channel as its
+// stages finish, so a second call returns an error instead of operating on
+// already-closed channels.
 func (p *Pipeline) Run(ctx context.Context) error {
 	if isNilValue(ctx) {
 		return errors.New("etl: Run called with a nil context.Context")
@@ -309,12 +268,11 @@ func (p *Pipeline) Run(ctx context.Context) error {
 		mu       sync.Mutex
 		recorded error
 	)
-	// fail's cancel below is what lets other stages' consumeInputs unblock a
-	// stalled upstream node (see consumeInputs), so a stage failing for a real
-	// reason routinely races against sibling stages that are merely reacting
-	// to that same cancellation. Preferring a non-cancellation error over one
-	// already recorded keeps the reported error the actual root cause instead
-	// of whichever "context canceled" cascade happened to land first.
+	// cancel() unblocks other stages' consumeInputs (see consumeInputs), which
+	// races a genuine failure against sibling stages merely reacting to that
+	// same cancellation. Preferring a non-cancellation error keeps the
+	// reported error the actual root cause, not whichever "context canceled"
+	// cascade lands first.
 	fail := func(err error) {
 		if err == nil {
 			return
@@ -392,11 +350,8 @@ func runNode(ctx context.Context, cancel context.CancelFunc, n *node) error {
 	}
 }
 
-// abortIfAborter calls Abort on v if it optionally implements Aborter. It is
-// called in place of Finish whenever a processor or sink node is about to
-// return early because of an upstream failure or cancellation, giving a
-// stage holding external resources (e.g. filesink.Sink's open blob writer) a
-// chance for best-effort cleanup instead of leaking them.
+// abortIfAborter calls Abort in place of Finish when a stage is skipping
+// Finish due to upstream failure or cancellation (see Aborter).
 func abortIfAborter(v any) {
 	if a, ok := v.(Aborter); ok {
 		a.Abort()
@@ -415,10 +370,8 @@ type nodeOutput struct {
 }
 
 func (o nodeOutput) Send(ctx context.Context, b Batch) error {
-	// A typed nil pointer (e.g. `var b *ArrowBatch = nil`) wrapped in a
-	// non-nil Batch interface would pass b == nil and then panic on the
-	// Retain() call below; nilBatch catches that case the same way
-	// isNilValue already does for stages passed to From/Process/Merge/To.
+	// nilBatch also catches a typed-nil *ArrowBatch that would otherwise
+	// panic on Retain() below (see nilBatch).
 	if nilBatch(b) {
 		return errors.New("etl: cannot send a nil batch")
 	}
@@ -426,14 +379,11 @@ func (o nodeOutput) Send(ctx context.Context, b Batch) error {
 		ctx = o.ctx
 	}
 
-	// A stage with no downstream attachment (a dangling Process() branch, or
-	// p.From(src) with nothing ever attached to it) has zero outgoing edges,
-	// so the loop below never runs and its per-edge cancellation checks
-	// never execute. Checking here too means Send still reports
-	// cancellation even with no edges to send to, which a Source or
-	// Processor relying solely on Send's returned error to learn about
-	// cancellation (a pattern the Source/Processor docs above explicitly
-	// permit) depends on to ever stop.
+	// Checked here too (not just in the per-edge loop below): a stage with
+	// zero outgoing edges — a dangling Process(), or a From with nothing
+	// attached — would otherwise never observe cancellation via Send, and a
+	// Source relying solely on Send's error to know when to stop (see
+	// Source's doc comment) would loop forever.
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -458,22 +408,16 @@ func (o nodeOutput) Send(ctx context.Context, b Batch) error {
 }
 
 // consumeInputs merges inputs into a single stream and calls consume for
-// each batch. On either early-return path below (a failing consume, or ctx
-// already done), it cancels its own derived context and waits for every
-// reader goroutine to observe that and exit before returning itself —
-// otherwise those goroutines are left running detached, and a caller of
-// Run could observe it return while they're still draining queued batches
-// in the background. The happy path (merged closing) needs no such wait:
-// close(merged) below only happens after readers.Wait() has already
-// returned, so every reader is already done by construction.
+// each batch. On early return (a failing consume, or ctx already done), it
+// cancels its own readers and waits for them to exit before returning —
+// otherwise a reader could still be draining and releasing queued batches
+// after the caller (and Run) has already moved on. The happy path needs no
+// such wait: close(merged) only happens after readers.Wait() already has.
 //
-// Canceling the derived context only stops this function's own reader
-// goroutines — it has no effect on the upstream nodes feeding inputs, which
-// watch the pipeline-wide ctx instead. Without also invoking cancel (the
-// pipeline's CancelFunc) before waiting, an upstream node that never stops
-// on its own (e.g. an unbounded source) would keep sending batches forever,
-// so drainEdge would never see its edge close and readers.Wait() below
-// would block forever.
+// Canceling the derived readCtx only stops this function's own readers, not
+// the upstream nodes feeding inputs; without also invoking the pipeline's
+// cancel, an upstream that never stops on its own (e.g. an unbounded source)
+// would keep sending forever and readers.Wait() below would block forever.
 func consumeInputs(ctx context.Context, cancel context.CancelFunc, inputs []*edge, consume func(Batch) error) error {
 	if len(inputs) == 0 {
 		return nil

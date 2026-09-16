@@ -49,10 +49,9 @@ type Source interface {
 }
 
 // Processor consumes batches and may emit zero or more batches. Finish is
-// called exactly once after every upstream input has completed successfully.
-// No further call to Process can occur after Finish begins. As with Source,
-// Process and Finish must return any error from Output.Send rather than
-// discarding it.
+// called exactly once after every upstream input has completed successfully,
+// and no further Process call occurs after Finish begins. As with Source,
+// Process and Finish must forward any Output.Send error (see Source).
 type Processor interface {
 	Process(context.Context, Batch, Output) error
 	Finish(context.Context, Output) error

@@ -141,7 +141,7 @@ func TestLookupSkipsZeroRowBatch(t *testing.T) {
 
 	p := etl.New()
 	sink := &countingSink{}
-	// intBatch with zero values still produces a batch with 0 rows.
+	// int64Batch with zero values still produces a batch with 0 rows.
 	p.From(fixedBatchSource{batches: []etl.Batch{int64Batch(t, upstreamSchema)}}).
 		Process(lookup).To(sink)
 	if err := p.Run(context.Background()); err != nil {
@@ -213,9 +213,8 @@ func TestLookupSkipsWhenGeneratorReturnsZeroArgs(t *testing.T) {
 	}
 	defer db.Close()
 
-	// Simulates a generator that filters every row out of a non-empty
-	// batch (e.g. goetl's "skip Multiparcel shipments" pattern) and would
-	// otherwise return a query with no args to bind.
+	// Simulates a generator that filters every row out of a non-empty batch
+	// and returns no args to bind.
 	generate := func(b etl.Batch) (string, []any, error) {
 		return "SELECT id FROM shipments WHERE id IN ()", nil, nil
 	}
@@ -300,12 +299,8 @@ func TestLookupQueryError(t *testing.T) {
 }
 
 // TestLookupWithAllocatorNilIgnored is a regression test: WithLookupAllocator
-// used to overwrite Lookup's mem field unconditionally, so passing nil
-// replaced the memory.DefaultAllocator set by NewLookup with a nil
-// allocator, which panics (or otherwise misbehaves) the first time an Arrow
-// builder is constructed from it. A nil mem must be silently ignored,
-// keeping the default, the same convention WithLookupBatchSize already
-// follows for an invalid n.
+// used to store nil unconditionally, replacing the default allocator and
+// panicking on first builder use. A nil mem must be silently ignored.
 func TestLookupWithAllocatorNilIgnored(t *testing.T) {
 	upstreamSchema := int64Schema("id")
 	resultSchema := arrow.NewSchema([]arrow.Field{
@@ -344,12 +339,9 @@ func TestLookupWithAllocatorNilIgnored(t *testing.T) {
 	}
 }
 
-// TestLookupWithAllocatorTypedNilIgnored is a regression test: unlike
-// TestLookupWithAllocatorNilIgnored's untyped nil literal, a typed-nil
-// concrete allocator such as (*memory.CheckedAllocator)(nil), wrapped in
-// the memory.Allocator interface, is != nil. WithLookupAllocator must
-// still catch it and keep the default rather than storing it and panicking
-// the first time the batch builder tries to use it.
+// TestLookupWithAllocatorTypedNilIgnored is a regression test: a typed-nil
+// allocator like (*memory.CheckedAllocator)(nil) is != nil once wrapped in
+// the interface, so WithLookupAllocator must still detect and ignore it.
 func TestLookupWithAllocatorTypedNilIgnored(t *testing.T) {
 	upstreamSchema := int64Schema("id")
 	resultSchema := arrow.NewSchema([]arrow.Field{

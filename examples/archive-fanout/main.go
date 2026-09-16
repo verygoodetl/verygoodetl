@@ -18,9 +18,8 @@ import (
 	"github.com/verygoodetl/verygoodetl/filesink"
 )
 
-// ordersSource emits a single fixed batch of order IDs. A real Source would
-// pull from wherever orders actually live (a queue, an API, a database via
-// sqlsource — see examples/sql-to-archive).
+// ordersSource emits a single fixed batch; a real Source would pull from
+// wherever orders live (queue, API, database — see examples/sql-to-archive).
 type ordersSource struct{}
 
 func (ordersSource) Run(ctx context.Context, out etl.Output) error {
@@ -50,10 +49,8 @@ func main() {
 	pipeline := etl.New()
 	orders := pipeline.From(ordersSource{})
 
-	// CopyTo preserves the stream: batches flow to the archive AND continue
-	// on to the sink below, unmodified. WithWriterOptions{IfNotExist: true}
-	// is what makes this an archive rather than an ordinary overwrite-on-
-	// every-run file sink: writing orders.parquet a second time fails.
+	// WithWriterOptions{IfNotExist: true} makes this an archive, not an
+	// overwrite-on-every-run file sink: writing orders.parquet twice fails.
 	orders.CopyTo(filesink.New(bucket, "orders.parquet", filesink.Parquet(),
 		filesink.WithWriterOptions(&blob.WriterOptions{IfNotExist: true})))
 

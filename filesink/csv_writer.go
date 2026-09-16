@@ -31,13 +31,11 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 // The only behavioral differences from the standard library's csv.Writer
-// are two deliberately opt-in extensions: EscapeCharacter (the sequence
-// written before an embedded quote inside a quoted field — RFC 4180 always
-// doubles the quote, and that remains the default here) and
-// AlwaysEncapsulate (quote every field unconditionally, instead of only
-// when a field actually requires it). Everything else — quoting rules,
-// delimiter handling, line endings, including the standard library's own
-// dropped-bare-\r-in-CRLF-mode behavior — is unchanged from upstream.
+// are two opt-in extensions: EscapeCharacter (the sequence written before
+// an embedded quote — RFC 4180 always doubles the quote, still the
+// default) and AlwaysEncapsulate (quote every field, not just when
+// needed). Everything else, including the dropped-bare-\r-in-CRLF-mode
+// quirk, is unchanged from upstream.
 
 package filesink
 
@@ -62,18 +60,13 @@ type csvWriter struct {
 	Comma   rune // Field delimiter (set to ',' by newCSVWriter)
 	UseCRLF bool // True to use \r\n as the line terminator
 
-	// EscapeCharacter is written before an embedded quote character inside
-	// a quoted field. RFC 4180 specifies doubling the quote character,
-	// which is what an empty EscapeCharacter (the default) does. Set this
-	// only to interoperate with a consumer that expects a different
-	// escaping convention (e.g. a backslash) — output written with a
-	// non-default EscapeCharacter is not RFC 4180-compliant and will not
-	// round-trip through a standard CSV reader.
+	// EscapeCharacter is written before an embedded quote inside a quoted
+	// field; empty selects RFC 4180 doubled-quote escaping. See
+	// WithEscapeCharacter.
 	EscapeCharacter string
 
-	// AlwaysEncapsulate quotes every field unconditionally, instead of
-	// only fields that actually require it (those containing the
-	// delimiter, a quote character, \r, \n, or leading whitespace).
+	// AlwaysEncapsulate quotes every field unconditionally. See
+	// WithAlwaysEncapsulate.
 	AlwaysEncapsulate bool
 
 	w *bufio.Writer
@@ -93,8 +86,6 @@ func (w *csvWriter) escapeSequence() string {
 	return w.EscapeCharacter
 }
 
-// Write writes a single CSV record with quoting and escaping applied as
-// configured.
 func (w *csvWriter) Write(record []string) error {
 	if !validCSVDelim(w.Comma) {
 		return errInvalidCSVDelim
@@ -120,12 +111,9 @@ func (w *csvWriter) Write(record []string) error {
 		esc := w.EscapeCharacter
 		for len(field) > 0 {
 			i := strings.IndexAny(field, "\"\r\n")
-			// When a non-default EscapeCharacter is set, a literal
-			// occurrence of it inside the field is just as ambiguous to an
-			// escape-based reader as an unescaped quote: it must be escaped
-			// too, or the reader can't tell it apart from an
-			// escape-introducer byte. Treat the earliest occurrence of
-			// either as the next thing to handle.
+			// A literal EscapeCharacter byte in the field is as ambiguous
+			// to an escape-based reader as an unescaped quote, so it must
+			// be escaped too; take whichever occurs first.
 			escAt := -1
 			if esc != "" {
 				escAt = strings.Index(field, esc)

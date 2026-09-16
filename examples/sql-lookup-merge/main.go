@@ -25,16 +25,13 @@ import (
 )
 
 // combiner joins label-api rows (schema: id, carrier) with app-database
-// rows (schema: id, status, weight) by id. Pipeline.Merge delivers batches
-// from both inputs through the same Process call with no input identity
-// (see ARCHITECTURE.md's "Future multi-input semantics"), so which side a
-// batch came from is determined here by its schema shape.
-// carriers and appData hold pending rows per id, on the label-api and
-// app-database sides respectively. A slice (not a single value) is needed
-// per id because either side may contain duplicate ids: each incoming row
-// either consumes one pending row from the opposite side (a match) or is
-// queued for a later match on its own side.
+// rows (schema: id, status, weight) by id. Merge delivers batches from
+// both inputs with no input identity, so schema shape is what
+// distinguishes them here (see ARCHITECTURE.md's "Future multi-input
+// semantics").
 type combiner struct {
+	// carriers and appData queue pending rows per id (slices, not single
+	// values) since either side may have duplicate ids awaiting a match.
 	carriers map[int64][]string
 	appData  map[int64][]appRow
 }
@@ -48,8 +45,6 @@ func newCombiner() *combiner {
 	return &combiner{carriers: map[int64][]string{}, appData: map[int64][]appRow{}}
 }
 
-// popPending removes and returns the first pending row queued for id, along
-// with whether one was found.
 func popPending[T any](pending map[int64][]T, id int64) (T, bool) {
 	rows, ok := pending[id]
 	if !ok || len(rows) == 0 {
@@ -214,10 +209,8 @@ func main() {
 		{Name: "weight", Type: arrow.PrimitiveTypes.Float64},
 	}, nil)
 
-	// generate builds "WHERE id IN (?, ?, ...)" from whatever batch of
-	// label-api shipment ids arrived — the two databases aren't connected,
-	// so this is the only way to find the matching app-database rows.
-	// LookupKeys handles skipping nulls and de-duplicating ids for us.
+	// generate builds "WHERE id IN (?, ?, ...)" from the batch of label-api
+	// ids; LookupKeys skips nulls and de-dupes for us.
 	generate := func(b etl.Batch) (string, []any, error) {
 		args, err := sqlsource.LookupKeys(b, 0)
 		if err != nil {
@@ -239,9 +232,9 @@ func main() {
 	labelAPI := pipeline.From(source)
 	appMatches := labelAPI.Process(lookup)
 
-	// labelAPI is reused directly as a Merge input alongside appMatches:
-	// no "passthrough" processor is needed, since a Stream already fans out
-	// to multiple downstream attachments on its own.
+	// labelAPI is reused directly as a Merge input: a Stream already fans
+	// out to multiple downstream attachments, so no separate passthrough
+	// step is needed.
 	combined := pipeline.Merge(newCombiner(), labelAPI, appMatches)
 
 	var results []string

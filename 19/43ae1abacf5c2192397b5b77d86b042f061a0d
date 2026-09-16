@@ -1,0 +1,97 @@
+README.md
+  s_ca952b2548a279::t_3cc043f6e9bb01 205
+  s_ca952b2548a279::t_a00285cf7abb8d 207
+examples/sql-to-sql/main.go
+  s_ca952b2548a279::t_32f9ff7ca51125 55-63
+sqlsink/sink_test.go
+  s_ca952b2548a279::t_d16825f95a6b1f 1356-1357,1570-1613,1617-1642
+  s_be150e0123928b::t_cc3fa0fbe01b6f 1101-1106
+  s_ca952b2548a279::t_0527416633cb56 1340-1355
+  s_ca952b2548a279::t_3fa2700e6f93ba 1259-1260,1265
+  s_ca952b2548a279::t_13808195aa76da 370-375,377,380-385
+  s_ca952b2548a279::t_35129d17c3a92a 6
+  s_ca952b2548a279::t_437c206b085498 1382-1395
+  s_ca952b2548a279::t_5c9b85fe19ee39 1614-1616
+  s_ca952b2548a279::t_dbe6b8513d5b67 1643-1768
+  s_ca952b2548a279::t_caffa9ff0c8e33 688-712
+  s_ca952b2548a279::t_82220cce7b70c7 8
+  s_ca952b2548a279::t_e05f61484c88f6 9,17
+  s_ca952b2548a279::t_7935e9d481a3ad 1089-1100
+  s_ca952b2548a279::t_2b2d9b30841117 1359-1381
+  s_ca952b2548a279::t_bbf764dedaf332 1177-1189,1191,1224
+  s_ca952b2548a279::t_cf790577ad1b80 437-486
+  s_ca952b2548a279::t_2cf6d9a0dffeb5 1172-1176,1190,1192-1223,1225-1240
+  s_ca952b2548a279::t_c4d776286967c6 565-572,598-599
+  s_ca952b2548a279::t_525a27a9c2b0c1 1305-1339,1396-1479
+  s_ca952b2548a279::t_a9699b697c5e53 1358
+sqlsink/sink_internal_test.go
+  s_ca952b2548a279::t_105f63298ab4da 100-200
+  s_ca952b2548a279::t_ca2ff6e9421476 13
+  s_ca952b2548a279::t_ab2e3f5acb2152 267-351
+ARCHITECTURE.md
+  s_ca952b2548a279::t_360ec77209ebdb 84-85
+sqlsink/doc.go
+  s_ca952b2548a279::t_dee452540a80c6 22-29
+sqlsink/sink.go
+  s_ca952b2548a279::t_c032aa4c285f4b 519,533-534,537-546
+  s_ca952b2548a279::t_383caa3593fd1e 114-128
+  s_ca952b2548a279::t_21f4f33ba4c2b1 136-138,141-145,147
+  s_415ab668db447e::t_dbc9ee862cce4a 146,148-150,232
+  s_ca952b2548a279::t_46a685e2391440 151-170,183,227-228
+  s_ca952b2548a279::t_02d7bbee286457 70,72
+  s_be150e0123928b::t_fcfd73e07d801f 346
+  s_be150e0123928b::t_807dcb9ba8fa5f 547-548
+  s_ca952b2548a279::t_b73b24e7ccd81a 200
+  s_ca952b2548a279::t_5924e038133ad2 316-318,340-345
+  s_ca952b2548a279::t_876d1a977aa824 516
+  s_ca952b2548a279::t_b785a8e9e99169 171
+  s_ca952b2548a279::t_aae1bc35743203 172-178
+  s_ca952b2548a279::t_df50024b6c4854 264
+  s_ca952b2548a279::t_04dcfb6661bef0 535-536
+  s_ca952b2548a279::t_01462cc0c1038a 230-231
+  s_ca952b2548a279::t_5dbfc5b7f00572 514-515
+  s_ca952b2548a279::t_7d187b224e8f95 213-215
+  s_ca952b2548a279::t_b4dbc68efea662 229
+  s_ca952b2548a279::t_b3bb05f108e9ff 319-325
+  s_ca952b2548a279::t_50166b25dbf2ee 414,416-421,434
+  s_ca952b2548a279::t_917251106e5aba 80-81
+  s_ca952b2548a279::t_35a9be07c4e961 449-484
+  s_ca952b2548a279::t_3c393e18336b91 485-491,506-508
+  s_ca952b2548a279::t_e753d275e2a866 295-314
+  s_ca952b2548a279::t_90ce2103e57567 84-89
+  s_ca952b2548a279::t_2ac5e60525c856 347-349
+  s_ca952b2548a279::t_b1cad7fbfb6f4c 286-290
+  s_ca952b2548a279::t_192fdd1a705a9b 179-182,184-189,191
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1943ae1abacf5c2192397b5b77d86b042f061a0d",
+  "prompts": {},
+  "sessions": {
+    "s_415ab668db447e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3c875eb9-2e42-4044-8f73-7205f29c00d7",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    },
+    "s_be150e0123928b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "72c0c04d-2cc7-4b55-9ed9-ad352eb634fd",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sturgill <chris@thesturgills.com>"
+    },
+    "s_ca952b2548a279": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "764258cf-8c8e-4985-8a77-c548fde34c49",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": null
+    }
+  }
+}
